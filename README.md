@@ -46,9 +46,9 @@ We are using GitHub for documents, issue tracking and open source components. We
 * [Immersive Web](https://www.w3.org/2025/webgpu/), a vision and series of demos towards that vision
 * [Neural Network Model Format](nnm/README.md), an easy to work with format and software library for use with WebNN
 * [Neural Networks for Human-like AI](agents/README.md)
-* [Chunks and Rules](https://w3c.github.io/cogai/chunks-and-rules.html)
-  * [Application to low-code control of digital twins](https://w3c.github.io/cogai/agents/low-code-with-chunks-and-rules.pdf)
-* [Plausible Knowledge Notation](https://w3c.github.io/cogai/pkn.html)
+* [Chunks and Rules](https://w3c-cg.github.io/cogai/chunks-and-rules.html)
+  * [Application to low-code control of digital twins](https://w3c-cg.github.io/cogai/agents/low-code-with-chunks-and-rules.pdf)
+* [Plausible Knowledge Notation](https://w3c-cg.github.io/cogai/pkn.html)
 
 ## Webinars
 
@@ -60,7 +60,7 @@ This is a series of recorded webinars, see [webinar planning](webinars/README.md
 
 * Talks
   * 08 July 2025 [cognitive control of digital twins in swarm system](demos/Swarms/tasks/Raggett-cognitive-digital-twins.pdf), lecture + demos at the Edge AI summer school, Pisa
-  * 05 September 2024 [Application to low-code control of digital twins](https://w3c.github.io/cogai/agents/low-code-with-chunks-and-rules.pdf), talk at Swarm Computing Workshop, Brussels
+  * 05 September 2024 [Application to low-code control of digital twins](https://w3c-cg.github.io/cogai/agents/low-code-with-chunks-and-rules.pdf), talk at Swarm Computing Workshop, Brussels
   * 04 July 2023 [Combining Digital Twins with Cognitive Agents](https://www.w3.org/2023/07-Raggett-SimSwarm.pdf), talk at ETSI IoT Week 2023
   * 14 June 2023 [Human-like AI: from logic to argumentation, reasoning with imperfect knowledge in the era of AGI](http://www.w3.org/2023/06-Human-like-AI.pdf), see [video recording](https://youtu.be/GMDGbRQSWyo) talk for Darmstadt Ontology Group
   * 18 April 2023 [Human-Like AI for Artificial General Intelligence](http://www.w3.org/2023/04-Raggett-towards-AGI.pdf), as part of the [Special day on Human-AI interaction, DATE 2023](https://www.date-conference.com/call-for-papers#Special-Day-on-Human-AI-Interaction)
@@ -74,7 +74,7 @@ This is a series of recorded webinars, see [webinar planning](webinars/README.md
   * 14-19 February 2021 - Human-like AI and the Sentient Web for [Dagstuhl seminar on autonomous agents on the Web](https://www.dagstuhl.de/en/program/calendar/semhp/?semnr=21072) - [slides](https://www.w3.org/2021/sentient-web-2021-01-11.pdf), [paper](https://www.w3.org/2021/Human-like-AI-article-raggett-long.pdf)
   * 11 January 2021 - [Presentation and discussion of work on Cognitive Natural Language Processing](https://www.w3.org/2021/Cognitive-NLP-2021-Jan.pdf)
   * 25 November 2020 - Seminar on Cognitive AI for [Centre for Artificial Intelligence, Robotics and Human-Machine Systems](https://www.cardiff.ac.uk/artificial-intelligence-robotics-and-human-machine-systems), Cardiff University: [slides](https://www.w3.org/2020/CogAI-2020-11-25.pdf), [video](https://www.youtube.com/watch?v=gJiDi3lqwcA&feature=youtu.be)
-  * 06 November 2020 - [Seminar on Cognitive AI for Knowledge Media Institute, Open University](http://kmi.open.ac.uk/seminars/3552) -  [video](https://github.com/w3c/cogai/blob/master/faq.md) and [slides](https://www.w3.org/2020/CogAI-2020-11-06.pdf)
+  * 06 November 2020 - [Seminar on Cognitive AI for Knowledge Media Institute, Open University](http://kmi.open.ac.uk/seminars/3552) -  [video](https://github.com/w3c-cg/cogai/blob/master/faq.md) and [slides](https://www.w3.org/2020/CogAI-2020-11-06.pdf)
   * 08 June 2020 - [Cognitive AI and the Sentient Web for ISO/TC 211 50th Plenary meeting, WG4 Geospatial Services](https://www.w3.org/2020/sentient-web-20200608.pdf)
 * [Chunks format for declarative and procedural knowledge](chunks-and-rules.md)
 * [Common Sense Reasoning](demos/nlp/commonsense.md)
@@ -85,11 +85,11 @@ This is a series of recorded webinars, see [webinar planning](webinars/README.md
 
 ## Program of work
 
-The initial focus is to describe the aims for a sequence of [demonstrators](demos/README.md), to collaborate on the scenarios, detailed use cases, and associated datasets, and to identify and discuss questions that arise in this work. In relation to this, we are working on a [formal specification of the chunk data and rules format](https://w3c.github.io/cogai/chunks-and-rules.html) with a view to its standardisation.
+The initial focus is to describe the aims for a sequence of [demonstrators](demos/README.md), to collaborate on the scenarios, detailed use cases, and associated datasets, and to identify and discuss questions that arise in this work. In relation to this, we are working on a [formal specification of the chunk data and rules format](https://w3c-cg.github.io/cogai/chunks-and-rules.html) with a view to its standardisation.
 
-A further line of work deals with the means to express and reason with imperfect knowledge, that is, everyday knowledge subject to uncertainty, imprecision, incompleteness and inconsistencies. See the draft specifcation for the [plausible knowledge notation](https://w3c.github.io/cogai/pkn.html) (PKN), and the [web-based PKN demonstrator](https://www.w3.org/Data/demos/chunks/reasoning/). This is based upon work on guidelines for effective argumentation by a long line of philosophers since the days of Ancient Greece. In place of logical proof, we have multiple lines of argument for and against the premise in question just like in courtrooms and everyday reasoning. 
+A further line of work deals with the means to express and reason with imperfect knowledge, that is, everyday knowledge subject to uncertainty, imprecision, incompleteness and inconsistencies. See the draft specifcation for the [plausible knowledge notation](https://w3c-cg.github.io/cogai/pkn.html) (PKN), and the [web-based PKN demonstrator](https://www.w3.org/Data/demos/chunks/reasoning/). This is based upon work on guidelines for effective argumentation by a long line of philosophers since the days of Ancient Greece. In place of logical proof, we have multiple lines of argument for and against the premise in question just like in courtrooms and everyday reasoning. 
 
-Both PKN and chunks & rules can be considered in relation to RDF. RDF is a framework for symbolic graphs based upon labelled directed graph edges (aka *triples*). Compared to RDF, PKN and chunks & rules are higher level with additional semantics, and designed for use in human-like AI applications. Furthermore, both notations are designed to be easy to read and author compared with RDF serialisations such as RDF/XML, Turtle and even JSON-LD. See also the [Notation3 (N3) Language](https://w3c.github.io/N3/spec/) which is an assertion and logic language defined as a superset of RDF.
+Both PKN and chunks & rules can be considered in relation to RDF. RDF is a framework for symbolic graphs based upon labelled directed graph edges (aka *triples*). Compared to RDF, PKN and chunks & rules are higher level with additional semantics, and designed for use in human-like AI applications. Furthermore, both notations are designed to be easy to read and author compared with RDF serialisations such as RDF/XML, Turtle and even JSON-LD. See also the [Notation3 (N3) Language](https://w3c-cg.github.io/N3/spec/) which is an assertion and logic language defined as a superset of RDF.
 
 Work is now underway on vector-space representations of knowledge using artificial neural networks. Advances with generative AI have shown the huge potential of vector-space representations in combination with deep learning. However, there is a long way to go to better model many aspects of human cognition, e.g. continual learning using a blend of type 1 and type 2 cognition, episodic memory, and the role of emotions and feelings in directing cognition. Symbolic models will continue to serve an important role for semantic interoperability and explainability.  Neurosymbolic systems combine the complementary strengths of vector space and symbolic approaches. For more details see [Neural Networks for Human-like AI](agents/README.md) and [task-based orchestration](demos/Swarms/tasks/README.md).
 
