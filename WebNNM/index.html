@@ -91,6 +91,11 @@
       font-weight: bold;
     }
 
+    tr td:first-child a, 
+    tr th:first-child a {
+     color: white;
+     text-decoration: underline;
+    }
     /* 4. Special fix for the first row's cells */
     /* Ensures the individual cells in row 1 don't inherit gray from elsewhere */
     tr:first-child td, 
@@ -111,9 +116,9 @@
 
   <section class="informative">
     <h2>Introduction</h2>
-    <p>This specification introduces a simple notation and API for inference, testing and training neural networks models in Web browsers using [[WebNN]] for hardware acceleration. The intent is to make developing and using neural networks easy for newcomers, whilst offering experts fine grained control.</p>
+    <p>This specification introduces a simple notation and API for inference, testing and training neural networks models in Web browsers using [[WebNN]] for hardware acceleration. The intent is to make developing and using neural networks easy for newcomers, whilst offering experts fine grained control. Whilst it will be common for models to be pre-trained in the cloud on large datasets, the main use case for training in the browser is for privacy-friendly personalization, avoiding the need to upload personal data to the cloud.</p>
 
-    <p>WebNNM makes it easy to define neural network models in terms of blocks and layers. This includes the means to define layers as a composition of other layers, and to repeat layers using a sequence of tensor shapes. The WebNNM library is a JavaScript module that offers a simple API for declaring models, loading models from previously saved snapshots, and using them for inference, testing and training in conjunction with JavaScript modules for handling datasets. Models can be pre-trained in the cloud via WebNNM's support for export to the [[StableHLO/MLIR]] format. Fine-tuning in the browser then allows for privacy-friendly personalization, avoiding the need to send personal data to the cloud. WebNNM's expert system reviews the neural network, the hyperparameters and the dataset in respect to training stability and precision, avoiding difficult choices for novices, and warning where potential problems may arise.</p>
+    <p>WebNNM makes it easy to define neural network models in terms of blocks and layers. This includes the means to define layers as a composition of other layers, and to repeat layers using a sequence of tensor shapes. The WebNNM library is a JavaScript module that offers a simple API for declaring models, loading models from previously saved snapshots, and using them for inference, testing and training in conjunction with JavaScript modules for handling datasets. Models can be pre-trained in the cloud via WebNNM's support for export to the [[StableHLO/MLIR]] format. Fine-tuning in the browser then allows for rapid personalization. WebNNM's expert system reviews the neural network, the hyperparameters and the dataset in respect to training stability and precision, avoiding difficult choices for novices, and warning where potential problems may arise.</p>
   </section>
 
   <section id="conformance">
@@ -138,6 +143,8 @@
 
   <section>
     <h2>Blocks and Layers</h2>
+    <p>WebNNM seeks to make life easier for novices whilst providing experts with the control they seek. To realise this ambition, models are expressed in a high-level notation that uses meaningfully named tensor dimensions and omits batch size and sequence lengths, which are applied when compiling models into executable WebNN graphs or on export to MLIR. This allows tensors to be adapted to match the layouts provided by the datasets. The models only need to deal with feature layout, e.g. [channels, height, width] for images. Using meaningfully names makes layers easier to understand than the integer indices expected by WebNN.</p>
+
     <p>WebNNM models are defined as a set of blocks, where each block has a set of properties, including a sequence of layers.</p>
     
     <aside class="example" title="WebNNM model">
@@ -155,19 +162,69 @@ dense:layers
 </code></pre>
     </aside>
 
-    <p>Each layer has an operator, e.g. <em>matmul</em>, and zero or more operands followed by zero or more options. In this example, <em>shapes, shape</em> and <em>activation</em> are options. The <em>shapes</em> option signifies that a layer is to be repeated using the corresponding tensors shapes. In this case, a dense layer with output shape [128], a second with shape [80] and a third with shape [40].  WebNNM uses macros to bind options and their values. This is used to bind the activation to "relu" or "softmax". <em>w</em> and <em>b</em> are operands used to name model parameters. Note that the tensor shapes are declared without the dimensions for the batch size or sequence length, which are bound later. You are free to declare the data types if needed. The default data type is <code>float32</code>, subject to type inference. WebNNM applies tensor data type and shape inference, removing the need to explicitly specify the shape for every layer.</p>
+    <p>Each layer has an operator, e.g. <em>matmul</em>, and zero or more operands followed by zero or more options. In this example, <em>shapes, shape</em> and <em>activation</em> are options. The <em>shapes</em> option signifies that a layer is to be repeated using the corresponding tensors shapes. In this case, a dense layer with output shape [128], a second with shape [80] and a third with shape [40].  WebNNM uses macros to bind options and their values. This is used to bind the activation to "relu" or "softmax". <em>w</em> and <em>b</em> are operands used to name model parameters. Note that the tensor shapes are declared excluding the dimensions for the batch size or sequence length, which are bound later. You are free to declare the data types if needed. The default data type is <code>float32</code>, subject to type inference. WebNNM applies tensor data type and shape inference, removing the need to explicitly specify the shape for every layer.</p>
     
     <p>The permitted datatypes are taken from [[WebNN]]: <code>float32</code>, <code>float16</code>, <code>int32</code>, <code>uint32</code>, <code>int8</code>, <code>uint8</code>, <code>int4</code>, and <code>uint4</code> (in order of decreasing precision). Note that [[WebNN]] places further restrictions on which data types can be used for certain operators. In addition, [[WebNN]] uses <code>int32</code> for the size of each dimension, limiting it a maximum of 2147483648.</p>
     
     <p>WebNNM applies inference from the inputs and outputs. Automatic data type casts are applied when needed from a lower to a higher precision, e.g. <code>float16</code> to <code>float32</code>, but not from a higher to a lower precision. Note that type casting is applied lazily from the inputs to the outputs, i.e. preserving the lower precision until a cast to a higher precision is required. If you need greater control, you can provide explicit data types on the layers of interest.</p>
     
-    <p>Block input and output properties are expressed as the block name, followed by a colon then "input" or "output" respectively. This is followed by an optional data type and then a required shape, e.g. <code>model:input float16 shape=[784]</code>. Block properties are terminated with a semicolon. Layers are comma separated. The block <em>name</em> property is used when saving a snapshot.</p>
+    <p>Block input and output properties are expressed as the block name, followed by a colon then "input" or "output" respectively. This is followed by an optional data type and then a required shape, e.g. <code>model:input float16 shape=[784]</code>. Block properties are terminated with a semicolon. Layers are comma separated. The block <em>name</em> property is used when saving a snapshot. Blocks should name the dimensions when an input or output has more than one dimension, e.g. <code>model:input float32 shape={channels:3, height:28, width:28};</code>. The default dimension name is <em>features</em> for inputs and <em>labels</em> for outputs. The dimension names must be unique, and avoid reserved names: <em>batch</em>, and <em>sequence</em>. The choice of curly braces for shapes with named dimensions is deliberate, and resembles the distinction between JavaScript objects and arrays. Use square brackets for shapes without dimension names.</p>
+    
+    <div class="issue">Would it make sense to extend the block syntax to allow for declaration of named constant tensors? This would avoid the need to include lengthy literal definitions in place in layers, and allow for a given constant to be referred to from multiple places. The syntax would declare the constant's name, optional datatype,  its shape and dimension names, then a flat array of values to populate the tensor, e.g. as in the following:
+    <pre>
+    model:constants
+        pi float32 [] 3.1415926,
+        foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
+    </pre>
+    where <em>pi</em> is defined as a scalar and <em>foo</em> as a rank 2 tensor with dimensions "a" and "b". You would have the choice of using curly braces for named dimensions or square brackets for just the dimension sizes.
+    </div>
+    
+    <section>
+    <h3>Tensor Layout</h3>
+    <p>WebNNM allows users to focus on the features and labels for their data, leaving the batch size and sequence length to be automatically applied when compiling to WebNN. The tensor layout defines how data is physically ordered in the computer's memory. Each tensor has a sequence of dimensions, e.g. [batch, features], or [batch, sequence, features] for sequenced data. The features themselves may be split across several dimensions, e.g. [batch, channels, height, width]. The tensor rank is the number of dimensions. The tensor size is the product of the dimension sizes. The tensor shape is the list of dimension sizes, e.g. [20, 3, 256, 256]. With a few exceptions, most layers preserve the layout. Here is a table showing  variety of layouts and their applications:</p>
+    
+    <table>
+    <tr>
+        <td>Format</td>
+        <td>Structure</td>
+        <td>Primary Domain</td>
+        <td>Hardware Advantage</td>
+    </tr>
+    <tr>
+        <td>Batch-First</td>
+        <td>$B \times S\times F$</td>
+        <td>Transformers, General NLP</td>
+        <td>Intuitive for batch slicing and token-level operations.</td>
+    </tr>
+    <tr>
+        <td>Sequence-First</td>
+        <td>$S \times B \times F$</td>
+        <td>RNNs, LSTMs, Seq2Seq</td>
+        <td>Optimizes time-step looping memory access.</td>
+    </tr>
+    <tr>
+        <td>Channels-First</td>
+        <td>$B \times F \times S$</td>
+        <td>1D Convs, Audio, Time-Series</td>
+        <td>Fits legacy CuDNN convolution optimization.</td>
+    </tr>
+    <tr>
+        <td>Packed / Ragged</td>
+        <td>$TokenCount \times F$</td>
+        <td>LLM Serving, GNNs</td>
+        <td>Eliminates padding waste for variable lengths.</td>
+    </tr>
+    </table>
+    
+    <p>WebNNM automatically tracks the layout across the neural network, and applies any changes made by each layer. This is used to translate from dimension names for features to the integer indices in the full layout for the tensors operated on by WebNN.</p>
+
+    </section>
   </section>
 
   <section>
     <h2>Directed Acyclic Graphs</h2>
     <p>WebNNM parses to an object model for blocks and layers, and from there to a  directed acyclic graph (DAG) with node types for inputs, outputs, parameters, literals and WebNN operations. Each node has an explicit data type and tensor shape. Nodes that are not on a path from an input node to an output node are culled, along with associated parameters and literals. Higher level operations are decomposed into WebNN operations as part of the process of building the DAG. Parameter nodes are annotated with attributes relating to how their tensors should be initialised based upon the activation function, for instance the <em>Glorot</em> or <em>He</em> algorithms, as well as good initial values for bias parameters.</p>
-    <p>The DAG is used to build executable WebNN graphs on demand for inference, testing and training. For testing, the dataset provides a sequence of batches of test data where the last batch may be smaller than the rest. The testing graph uses masking to ignore the missing data in the last batch.  Training is similar. The training graph starts with a forward pass to compute the loss, then a backwards pass to compute the gradient of the loss with respect to each model parameter. This is followed by an optimizer that computes updates for the model parameters along with their momentum. A ping/pong approach is used to retain parameter values in the GPU or NPU's memory until training is complete. Further details are given in a later section.</p>
+    <p>The DAG is used to build executable WebNN graphs on demand for inference, testing and training. For testing, the dataset provides a sequence of batches of test data where the last batch may be smaller than the rest. The testing graph uses masking to ignore the missing data in the last batch.  Training is similar. The training graph starts with a forward pass to compute the loss, then a backwards pass to compute the gradient of the loss with respect to each model parameter. This is followed by an optimizer that computes updates for the model parameters along with their momentum. A ping/pong approach is used to retain parameter values in the GPU or NPU's memory until training is complete. Further details are given in a later section. Note that DAG nodes omit the batch size and sequence length allowing the batch size, sequence lengths and full layout to be dynamically selected according to the needs of the dataset.</p>
   </section>
   
   <section>
@@ -508,65 +565,208 @@ window.addEventListener("load", async () => {
 
     <section>
     <h3>WebNNM Operators</h3>
+
+    <p>WebNNM seeks to make life easier for novices whilst providing experts with the control they seek. To realise this ambition, models are expressed in a high-level notation that uses meaningfully named tensor dimensions and omits batch size and sequence lengths, which are applied when compiling models into executable WebNN graphs or on export to MLIR. This allows tensors to be adapted to match the layouts provided by the datasets. The models will often only need to deal with feature layout, e.g. [channels, height, width] for images. Using meaningfully names makes layers easier to understand than the integer indices expected by WebNN.</p>
+    
     <table>
     <tr>
         <td><b>Category</b></td>
         <td><b>WebNN Operators</b></td>
     </tr>
     <tr>
-        <td><b>Tensor creation</b></td> 
+        <td><b><a href="#tensor-creation">Tensor Creation</a></b></td> 
         <td>input, constant</td>   
     </tr>
     <tr>
-        <td><b>Tensor manipulation</b></td>    
+        <td><b><a href="#tensor-manipulation">Tensor Manipulation</a></b></td>    
         <td>concat, expand, gather, gatherElements, scatterElements, gatherND, scatterND, where, pad, reshape, slice, split, transpose, resample2d, reverse, tile, triangular</td>   
     </tr>
     <tr>
-        <td><b>Tensor quantization</b></td>    
+        <td><b><a href="#tensor-quantization">Tensor Quantization</a></b></td>    
         <td>quantizeLinear, dequantizeLinear</td>   
     </tr>
     <tr>
-        <td><b>Tensor casting</b></td>    
+        <td><b><a href="#tensor-casting">Tensor Casting</a></b></td>    
         <td>cast</td>   
     </tr>
     <tr>
-        <td><b>Mathematics</b></td>    
+        <td><b><a href="#mathematics">Mathematics</a></b></td>    
         <td>add, sub, mul, div, max, min, clamp, pow, abs, ceil, cos, erf, exp, floor, identity, log, neg, reciprocal, sin, sqrt, tan, tanh, sign, clamp</td>   
     </tr>
     <tr>
-        <td><b>Logical</b></td>    
+        <td><b><a href="#logical">Logical</a></b></td>    
         <td>equal, notEqual, greater, greaterOrEqual, lesser, lesserOrEqual, logicalNot, logicalAnd, logicalOr, logicalXor</td>   
     </tr>
     <tr>
-        <td><b>Matrix manipulation</b></td>    
+        <td><b><a href="#matrix-manipulation">Matrix Manipulation</a></b></td>    
         <td>matmul, gemm</td>   
     </tr>
     <tr>
-        <td><b>Convolution</b></td>    
+        <td><b><a href="#convolution">Convolution</a></b></td>    
         <td>conv2d, convTranspose2d</td>   
     </tr>
     <tr>
-        <td><b>Pooling</b></td>    
+        <td><b><a href="#pooling">Pooling</a></b></td>    
         <td>averagePool2d, l2Pool2d, maxPool2d</td>   
     </tr>
     <tr>
-        <td><b>Activation</b></td>    
+        <td><b><a href="#activation">Activation</a></b></td>    
         <td>clamp, elu, gelu, hardSigmoid, hardSwish, leakyRelu, linear, prelu, relu, sigmoid, softmax, softplus, softsign, tanh</td>   
     </tr>
     <tr>
-        <td><b>Normalization</b></td>    
+        <td><b><a href="#normalization">Normalization</a></b></td>    
         <td>batchNormalization, instanceNormalization, layerNormalization</td>   
     </tr>
     <tr>
-        <td><b>Reduction</b></td>    
+        <td><b><a href="#reduction">Reduction</a></b></td>    
         <td>argMin, argMax, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProduct, reduceSum, reduceSumSquare, cumulativeSum</td>   
     </tr>
     <tr>
-        <td><b>Recurrent Neural Networks</b></td>    
+        <td><b><a href="#recurrent-neural-networks">Recurrent Neural Networks</a></b></td>    
         <td>gruCell, gru, lstmCell, lstm</td>   
     </tr>
-    </table>    
+    </table>
+    
     <p>Note that you can write <code>batchNorm</code> in place of <code>batchNormalization</code>, and likewise <code>instanceNorm</code> and <code>layerNorm</code>.</p>
+
+    <section>
+    <h4>Tensor Creation</h4>
+        
+    <p>The high-level model syntax caters for model inputs and outputs. Numeric literals or lists thereof are compiled into WebNN constants. Parameters are expressed as named operands for layers. Here are some examples:</p>
+        
+    <p><code>model:input float16 shape=[channels:3, height:256, width:256]</code> An input for the model block with float16 for the datatype, and a shape for an image with named dimensions.</p>
+        
+    <p><code>model:output float32 shape=[32]</code> An output for the model block with float32 for the datatype and a shape with size 32, e.g. as a probability distribution across labelled classes.</p>
+        
+    <p><code>matmul(w)</code>  A matmul layer with "w" as the weight parameter</p>
+        
+    <p><code>add(1.5)</code> An add layer that adds the number 1.5 to the layer's input, using broadcasting to match the input tensor's shape.</p>
+    
+    <p><em>Note: Issue 1 proposes an extended syntax to allow models to declare a set of named constant tensors for use as operands or option values as an alternative to literal values.</em></p>
+    </section>
+
+    <section>
+    <h4>Tensor Manipulation</h4>
+        
+    <dl>
+    <dt>concat(inputs, axis=<em>name</em>)</dt><dd>Concatenates the input tensors along a named axis. If <em>inputs</em> is a variable list of one or more comma separated layer names, the tensors output by those layers will be concatenated starting with the input from the previous layer. If you want to concatenate a list of tensors excluding the input from the previous layer, you must enclose the list in square brackets.</dd>
+    <dt>expand(newShape=<em>{...}</em>)</dt><dd>Expands any dimension of size 1 in the feature dimensions of the tensor from the previous layer to a larger size according to a target shape. The target shape is declared using curly braces. Inside the braces, dimensions targeted for expansion are specified with their name and a positive integer target size (e.g., <code>channels:4</code>). Dimensions that should be left unchanged are specified by their name alone (e.g., <code>height</code>), signaling to the compiler to inherit their size directly from the input tensor. Global dimensions like batch size and sequence length are omitted from this property and are automatically preserved by the backend. If the feature dimensions inside the braces are listed in a different order from the tensor passed from the previous layer, a transpose operation will be automatically inserted to permute the dimensions to match the exact layout order given in the layer.</dd>
+    <dt>gather(shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>This is used to select and extract specific slices of a tensor along a given axis, using indices specified by another tensor. Think of it like using a list of index numbers to pick specific items out of an array, but scaled up to multi-dimensional data. <em>shape</em> defines the shape of a tensor using named dimensions, e.g. "{a:2, b:2}". This tensor is filled from the one dimensional array given by <em>data</em>. Let's say your full compiled layout looks like this:
+    <ul>
+    <li><em>Input Shape:</em> { batch: 32, sequence: 128, embedding: 768 }</li>
+    <li>Operation: gather(shape={ beam: 4, candidates: 2 }, data=[...], axis='sequence')</li>
+    </ul>
+    Resulting Output:
+    <ul>
+    <li><em>shape:</em> { batch: 32, beam: 4, candidates: 2, embedding: 768 }</li>
+    </ul>
+    where the dimension named by <em>axis</em> has been replaced by the given shape.
+    <div class="issue">
+    <p>Some advanced use cases involve gathering along the batch or sequence dimensions that are deliberately omitted from the high-level model syntax, and dealt with when compiling to WebNN. These use cases may require relative positions, relative sizes, sliding-windows, or symbolic variables for the shape. Here are some examples showing potential syntax to address these use cases:</p>
+    <pre>// Use Case 1: Fixed/Static size (Autoregressive token generation)
+gather(shape={ sequence: -1 }, axis='sequence')
+
+// Use Case 2: Strided Downsampling (Relative math string)
+gather(shape={ sequence: 50% }, axis='sequence') 
+
+// Use Case 3: Dynamic binding to another layer's runtime size
+gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</pre>
+    <p>Positive integers are relative to the start of the dimension, and negative integers are relative to the end of the dimension, e.g. -1 for the last element. Percentage values denote a fraction of the dimension size. The last example involves a symbolic reference to another named layer. For multimodal models, the sequence dimensions may be specific to each modality, necessitating distinct names.</p>
+    </div>
+    </dd>
+    <dt>gatherElements(shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>This operator acts like a target index map. It pairs each individual index with its exact coordinate location to pluck single, specific values from along the targeted axis. The tensor specified by <em>shape</em> and <em>data</em> is subject to several constraints: a) it must have the same rank as the input tensor, b) every named dimension in the shape must match a dimension in the input, and c) for every dimension ‭‬ that is not the target axis, the size in indices must be less than or equal to the size in input (usually they are identical). The layer's output shape and layout are the same as specified by the <em>shape</em> argument. Here is an example:
+    
+    <ul>
+    <li><em>Input Shape:</em> { batch: 32, sequence: 128, vocabulary: 50000 }</li>
+    <li>Operation: gatherElements(shape={ vocabulary: 5 }, data=[...], axis='vocabulary') (e.g., getting top-5 beams).</li>
+    </ul>
+    Resulting Output:
+    <ul>
+    <li><em>shape:</em> { batch: 32, sequence: 128, vocabulary: 5 }</li>
+    </ul>
+    Note that the batch and sequence dimensions are implicitly copied over from the input.
+    <p class="issue">similar considerations apply as for <em>gather</em>, e.g. the use of relative positions for omitted dimensions, e.g. for batch slicing.</p>
+    </dd>
+    <dt>scatterElements(updates, shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>If gatherElements is about extracting data along an axis based on a map of indices, scatterElements (often used for things like sparse updates, scatter-add in graph neural networks, or applying target masks) is the exact inverse. It writes data from a updates tensor into an input tensor at the positions specified by an indices tensor. The <em>updates</em> operand which names an input, constant or the output of another layer.
+    <p class="issue">similar considerations apply as for <em>gather</em>, e.g. the use of relative positions for omitted dimensions, e.g. for batch slicing.</p>
+    </dd>
+    <dt>gatherND(shape={...}, coords=[name, name, ...], data=[...])</dt>
+    <dt>gatherND(indices=name)</dt>
+    <dd><p>Extracts slices from the input tensor based on multi-dimensional coordinates. In the first signature, coordinates are explicitly constructed from the lookup grid defined in <code>shape</code>, the target axes mapped in <code>coords</code>, and the flat array of values in <code>data</code>. The compiler leverages the runtime layout of the input tensor to expand the flat <code>data</code> array into the full shape and layout required by the WebNN <code>indices</code> operand. By default, the compiler assumes that this coordinate lookup should be applied uniformly across every batch element and sequence position independently.</p>
+    <div class="example">
+    <p><strong>Example (First Signature):</strong> Consider an input tensor with a feature layout of <code>['classes', 'channels']</code>. If a developer wants to extract specific channels for two distinct classes across the entire network, they can write:</p>
+    <pre><code>gatherND(shape={picks: 2}, coords=[classes, channels], data=[0, 15, 2, 4])</code></pre>
+    <p>At compile time, if the dataset introduces global dimensions to form a full layout of <code>['batch', 'seq', 'classes', 'channels']</code>, the compiler automatically up-samples the 4-element <code>data</code> array. It generates a full coordinate tensor that maps those exact class and channel pairs independently for every individual batch element and sequence position, shielding the developer from managing the global dimension loops.</p>
+    </div>
+    <p>In the second signature, the layer skips automatic coordinate expansion and directly utilizes the <code>indices</code> tensor provided by the output of a named layer. This addresses use cases where a uniform approach to coordinate lookup breaks down, e.g. a model using a mixture of experts will route tokens within the same sequence to different neural network "experts". An image classification model needs to select different bounding boxes for each image in the batch. A similar consideration applies to graph neural networks. When training models efficiently, developers could pack multiple variable-length sequences into a single tensor row to avoid wasting memory on zero-padding tokens. The gatherND operation needs to extract just the valid tokens while ignoring the padding.</p>
+</dd>
+    <dt>scatterND(updates, shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>Scatter slices of values from the update tensor atop a copy of the input tensor according to the indices. This operator is similar to <em>gatherND</em> with the addition of the <em>updates</em> operand which names an input, constant or the output of another layer.</dd>
+    <dt>where(condition, trueValue, falseValue)</dt><dd>Selects the values from the trueValue or the falseValue tensor depending on the corresponding values of the condition tensor, where non-zero is true and zero is false.</dd>
+    <dt>pad(beginningPadding, endPadding, mode=<em>string</em>, value=<em>integer</em>)</dt><dd>Inflate the tensor with constant or mirrored values on the edges. <em>beginningPadding</em> is an array of length equal to the rank if the layer's input. Each value corresponds to the number of padding values to add before the content in that dimension. <em>endPadding</em> is similar, but applies to values added  after the content in each dimension. The mode option is <em>constant</em>, <em>edge</em> or <em>reflection</em>. <em>value</em> is the padding value, with a default of 0.</dd>
+    <dt>reshape(newShape=<em>{...}</em>)</dt><dd>Reshapes a tensor to a new shape. The shape can be specified using curly braces  to declare dimension names and sizes, or using square brackets for just the dimension sizes.</dd>
+    <dt>slice(starts, sizes, strides=<em>list</em>)</dt><dd>Produces a slice from the input tensor. <em>starts</em> lists the (zero based) starting index for each dimension. <em>sizes</em> correspondingly lists the number of elements to copy across from each dimension. The <em>strides</em> option lists the stride to step over each dimension in the input tensor. Stride must be zero or positive, and defaults to zero.</dd>
+    <dt>split(splits, axis=<em>name</em>)</dt><dd>Splits the input tensor into a number of sub tensors along the given axis. <em>splits</em> is either a positive integer or a list thereof. In the former case, it must evenly divide the dimension size of the input tensor along the specified axis. If it is a list, each element specifies the size of the corresponding output tensor along the axis. The sum of sizes must equal to the dimension size of input along the axis. The <em>axis</em> option names the dimension along which to split, defaulting to the first feature dimension.</dd>
+    <dt>transpose(permutation=<em>[name, name, ...]</em>)</dt><dd>  Permutes the dimensions of the layer's input tensor according to the specified <code>permutation</code> list, which lists all of the feature dimensions in the desired order. The compiler will automatically isolate and preserve global dimensions (like batch size and sequence length) in their original positions. For example, transposing a vision feature map from <code>[height, width, channels]</code> to <code>[channels, height, width]</code> automatically preserves the batch dimension at the front, achieving an NHWC to NCHW shift seamlessly.
+  <br><br>
+  For advanced use cases where a global dimension must be interleaved with feature dimensions—such as swapping the sequence and attention-head dimensions in a Transformer block (<code>[batch, sequence, heads, depth]</code> to <code>[batch, heads, sequence, depth]</code>)—developers may explicitly include the names <code>batch</code> and <code>sequence</code> within the <code>permutation</code> list to override the compiler's automatic placement and gain full structural control of the runtime tensor. In this case the length of the permutation list must equal the full rank of the input tensor.</dd>
+    <dt>resample2D(newShape=<em>{...}</em>, mode=<em>modeName</em>)</dt><dd>Resample the tensor values from the source to the destination dimensions according to the mode and scaling factors as determined by $scale = outputSize / inputSize$. The new shape associates the dimension names with the desired new size for that dimension. The mode name must be either <code>nearest-neighbor</code> or <code>linear</code>, defaulting to the former.
+    <p class="example">Here is an example that resizes the image data to 64 by 64 pixels using bilinear interpolation:<br>
+    <code>resample2D(newShape={ height: 64, width: 64 }, mode=bilinear)</code></p></dd>
+    <dt>reverse(axes=<em>[name, name, ...]</em>)</dt><dd>Reverses tensor data along named axes.
+    <p class="example">Here is an example that flips the image left to right:<br>
+    <code>reverse(axes=[width])</code></p>
+    </dd>
+    <dt>tile(repetitions=<em>{...}</em>)</dt><dd>Repeat a tensor a given number of times along each named dimension.
+    <p class="example">Here is an example that repeats the image twice vertically and three times horizontally:<br>
+    <code>time(repetitions={ height: 2, width: 3 })</code></p></dd>
+    <dt>triangular(upper=<em>boolean</em>, diagonal=<em>integer</em>)</dt><dd>Given a 2-D tensor (matrix), return a 2-D tensor containing either the upper or lower triangular part of the input tensor. The <code>upper</code> property defaults to <code>true</code> and indicates whether to output the upper or the lower part of the input matrix. The <code>diagonal</code> property defaults to <code>0</code> and specifies an offset relative to the main diagonal of the matrix. A value of <code>0</code> means only elements bounded by the main diagonal itself are affected; a positive integer shifts the boundary up and to the right, while a negative integer shifts it down and to the left. Note that the operation applies to the last two feature dimensions. If these are not the final two dimensions in the run-time tensor layout, transpose operations will be automatically injected before and after the WebNN <code>triangular</code> operation. If the input tensor has greater than 2 dimensions it is treated as a batch of matrices and the result has the same shape.</dd>
+    </dl>
+    </section>
+
+    <section>
+        <h4>Tensor Casting</h4>
+    </section>
+
+    <section>
+        <h4>Tensor Quantization</h4>
+    </section>
+
+    <section>
+        <h4>Mathematics</h4>
+    </section>
+
+    <section>
+        <h4>Logical</h4>
+    </section>
+
+    <section>
+        <h4>Matrix Manipulation</h4>
+    </section>
+
+    <section>
+        <h4>Convolution</h4>
+    </section>
+
+    <section>
+        <h4>Pooling</h4>
+    </section>
+
+    <section>
+        <h4>Activation</h4>
+    </section>
+
+    <section>
+        <h4>Normalization</h4>
+    </section>
+
+    <section>
+        <h4>Reduction</h4>
+    </section>
+
+    <section>
+        <h4>Recurrent Neural Networks</h4>
+    </section>
+
     </section>
     <section>
     <h3>WebNNM Operators not directly supported by WebNN</h3>
@@ -580,8 +780,9 @@ window.addEventListener("load", async () => {
     </dl>
     </section>
   </section> 
-  <section id="index" class="appendix">
-    <h2>Appendices</h2>
+</section>
+<section id="index" class="appendix">
+   <h2>Appendices</h2>
     <section>
       <h3>WebNNM Model Syntax</h3>
       <p>This section defines the grammar for the model syntax.</p>
