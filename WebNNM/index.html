@@ -171,7 +171,7 @@ dense:layers
     <p>Block input and output properties are expressed as the block name, followed by a colon then "input" or "output" respectively. This is followed by an optional data type and then a required shape, e.g. <code>model:input float16 shape=[784]</code>. Block properties are terminated with a semicolon. Layers are comma separated. The block <em>name</em> property is used when saving a snapshot. Blocks should name the dimensions when an input or output has more than one dimension, e.g. <code>model:input float32 shape={channels:3, height:28, width:28};</code>. The default dimension name is <em>features</em> for inputs and <em>labels</em> for outputs. The dimension names must be unique, and avoid reserved names: <em>batch</em>, and <em>sequence</em>. The choice of curly braces for shapes with named dimensions is deliberate, and resembles the distinction between JavaScript objects and arrays. Use square brackets for shapes without dimension names.</p>
     
     <div class="issue">Would it make sense to extend the block syntax to allow for declaration of named constant tensors? This would avoid the need to include lengthy literal definitions in place in layers, and allow for a given constant to be referred to from multiple places. The syntax would declare the constant's name, optional datatype,  its shape and dimension names, then a flat array of values to populate the tensor, e.g. as in the following:
-    <pre>
+    <pre class="nohighlight">
     model:constants
         pi float32 [] 3.1415926,
         foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
@@ -634,15 +634,23 @@ window.addEventListener("load", async () => {
         
     <p>The high-level model syntax caters for model inputs and outputs. Numeric literals or lists thereof are compiled into WebNN constants. Parameters are expressed as named operands for layers. Here are some examples:</p>
         
-    <p><code>model:input float16 shape=[channels:3, height:256, width:256]</code> An input for the model block with float16 for the datatype, and a shape for an image with named dimensions.</p>
+    <ul>
+    <li><code>model:input float16 shape={channels:3, height:256, width:256}</code> An input for the model block with float16 for the datatype, and a shape for an image with named dimensions.</li>
         
-    <p><code>model:output float32 shape=[32]</code> An output for the model block with float32 for the datatype and a shape with size 32, e.g. as a probability distribution across labelled classes.</p>
+    <li><code>model:output float32 shape=[32]</code> An output for the model block with float32 for the datatype and a shape with size 32, e.g. as a probability distribution across labelled classes.</li>
         
-    <p><code>matmul(w)</code>  A matmul layer with "w" as the weight parameter</p>
+    <li><code>matmul(w)</code>  A matmul layer with "w" as the weight parameter</li>
         
-    <p><code>add(1.5)</code> An add layer that adds the number 1.5 to the layer's input, using broadcasting to match the input tensor's shape.</p>
+    <li><code>add(1.5)</code> An add layer that adds the number 1.5 to the layer's input, using broadcasting to match the input tensor's shape.</li>
+    </ul>
     
-    <p><em>Note: Issue 1 proposes an extended syntax to allow models to declare a set of named constant tensors for use as operands or option values as an alternative to literal values.</em></p>
+    <p><em>Note: Issue 1 proposes an extended syntax to allow models to declare a set of named constant tensors for use as operands or option values as an alternative to literal values. Here is an example:</em></p>
+    
+    <pre class="nohighlight">
+    model:constants
+        pi float32 [] 3.1415926,
+        foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
+    </pre>
     </section>
 
     <section>
@@ -718,29 +726,99 @@ gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</
     </dd>
     <dt>tile(repetitions=<em>{...}</em>)</dt><dd>Repeat a tensor a given number of times along each named dimension.
     <p class="example">Here is an example that repeats the image twice vertically and three times horizontally:<br>
-    <code>time(repetitions={ height: 2, width: 3 })</code></p></dd>
+    <code>tile(repetitions={ height: 2, width: 3 })</code></p></dd>
     <dt>triangular(upper=<em>boolean</em>, diagonal=<em>integer</em>)</dt><dd>Given a 2-D tensor (matrix), return a 2-D tensor containing either the upper or lower triangular part of the input tensor. The <code>upper</code> property defaults to <code>true</code> and indicates whether to output the upper or the lower part of the input matrix. The <code>diagonal</code> property defaults to <code>0</code> and specifies an offset relative to the main diagonal of the matrix. A value of <code>0</code> means only elements bounded by the main diagonal itself are affected; a positive integer shifts the boundary up and to the right, while a negative integer shifts it down and to the left. Note that the operation applies to the last two feature dimensions. If these are not the final two dimensions in the run-time tensor layout, transpose operations will be automatically injected before and after the WebNN <code>triangular</code> operation. If the input tensor has greater than 2 dimensions it is treated as a batch of matrices and the result has the same shape.</dd>
     </dl>
     </section>
 
     <section>
-        <h4>Tensor Casting</h4>
+        <h4>Tensor Quantization</h4>
+        <dl>
+        <dt>quantizeLinear(scale=<em>name</em>, zeroPoint=<em>name</em>)</dt><dd>Quantizes a floating point tensor to an integer tensor using the scale and zero-point bias (e.g. output = <code>clamp(roundEven(input / scale) + zeroPoint, 0, 255)</code> for "uint8"). The <code>scale</code> and <code>zeroPoint</code> tensors can be smaller than the input tensor as they are blockwise broadcast. <code>scale</code> and <code>zeroPoint</code> name a layer, input or constant. The <code>scale</code> tensor values must be non-zero positive numbers. The <code>zeroPoint</code> tensor must have the same shape as the <code>scale</code> tensor. The layer's input data type must be <code>float32</code> or <code>float16</code>. The data type of the <code>scale</code> tensor will (if needed) be casted to that of the layer's input. The data type for <code>zeroPoint</code> must be <code>uint8</code>, <code>int8</code>, <code>uint32</code> or <code>int32</code>. The data type of the output is taken from the data type of <code>zeroPoint</code>.</dd>
+        <dt>dequantizeLinear(scale=<em>name</em>, zeroPoint=<em>name</em>)</dt><dd>Dequantizes an integer tensor to floating point tensor using the scale and zero-point bias, where <code>output = (input - zeroPoint) * scale</code>. The <code>scale</code> and <code>zeroPoint</code> tensors can be smaller than the input tensor as they are blockwise broadcastable. <code>scale</code> and <code>zeroPoint</code> are defined in same way as for <code>quantizeLinear</code> except in respect to their data types. The layer's input data type must be <code>uint8</code>, <code>int8</code>, <code>uint32</code> or <code>int32</code>. The same holds for <code>zeroPoint</code>. The data type of the <code>scale</code> tensor must be <code>float32</code> or <code>float16</code>. The data type of the output is taken from the data type of <code>scale</code>.</dd>
+        </dl>
     </section>
 
     <section>
-        <h4>Tensor Quantization</h4>
+        <h4>Tensor Casting</h4>
+        <dl>
+        <dt>cast(dataType=<em>string</em>)</dt><dd>Cast each element in the input tensor to the target data type. <code>dataType</code> must be one of <code>uint8</code>, <code>int8</code>, <code>uint32</code>, <code>int32</code>, <code>float16</code> or <code>float32</code>.
+        <p class="issue">Some platforms may also support <code>uint64</code> and <code>int64</code>.</p>
+        </dl>
     </section>
 
     <section>
         <h4>Mathematics</h4>
+        <p>The following are element-wise operations with two operands, where the first is the layer's input and the second is given as a layer argument (<code>value</code>).</p>
+        
+        <dl>
+        <dt>add(value)</dt><dd>The output is computed by adding the given value to the layer's input. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        <dt>sub(value)</dt><dd>The output is computed by subtracting the given value from the layer's input. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        <dt>mul(value)</dt><dd>The output is computed by multiplying the given value with the layer's input. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        <dt>div(value)</dt><dd>The output is computed by dividing the layer's input by the given value. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        <dt>max(value)</dt><dd>The output is computed by comparing the elements in the  given value with those in the layer's input and taking the maximum. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        <dt>min(value)</dt><dd>The output is computed by comparing the elements in the given value with those in the layer's input and taking the minimum. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        <dt>pow(value)</dt><dd>The output is computed by raising the layer's input by power given by the value. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
+        </dl>
+        
+        <p class="issue">Would it be worth allowing a list of operands in square brackets, where the layer's input is not an implicit member of the list? What are the use cases for adding more than two operands in this way?</p>
+        
+        <p>The following are element-wise unary operations on the layer's input. The output has the same shape and data type as the input.</p>
+        
+        <dl>
+        <dt>abs()</dt><dd>Computes the absolute value element-wise on the input tensor, stripping the negative sign from any numbers less than zero.</dd>
+        <dt>ceil()</dt><dd>Computes the ceiling element-wise on the input tensor, rounding each value upward to the nearest integer greater than or equal to the original value.</dd>
+        <dt>cos()</dt><dd>Computes the trigonometric cosine element-wise on the input tensor, expecting input values to be supplied in radians.</dd>
+        <dt>erf()</dt><dd>Computes the statistical Gauss error function element-wise on the layer's input tensor. It outputs a tensor of identical shape and data type, mapping all input values to a smooth curve bounded strictly between -1.0 and 1.0.</dd>
+        <dt>exp()</dt><dd>Computes the exponential function element-wise on the input tensor, raising Euler's number ($e$) to the power of each input value.</dd>
+        <dt>floor()</dt><dd>Computes the floor element-wise on the input tensor, rounding each value downward to the nearest integer less than or equal to the original value.</dd>
+        <dt>identity()</dt><dd>Returns a new tensor with the exact same shape and values as the input tensor, acting as a clean pass-through layer often used to force data routing or manage graph endpoints.</dd>
+        <dt>log()</dt><dd>Computes the natural logarithm (base-$e$) element-wise on the input tensor, strictly expecting positive input values.</dd>
+        <dt>neg()</dt><dd>Computes the numerical negation element-wise on the input tensor, effectively multiplying every element by -1 to flip its arithmetic sign.</dd>
+        <dt>reciprocal()</dt><dd>Computes the reciprocal element-wise on the input tensor, calculating $1 / x$ for every individual value.</dd>
+        <dt>roundEven()</dt><dd>Computes the round-to-nearest-even operation (also known as convergent or banker's rounding) element-wise on the input tensor. It rounds values to the nearest integer, but resolves halfway cases (e.g., 1.5 or 2.5) strictly to the nearest even integer to eliminate statistical accumulation bias.</dd>
+        <dt>sin()</dt><dd>Computes the trigonometric sine element-wise on the input tensor, expecting input values to be supplied in radians.</dd>
+        <dt>sign()</dt><dd>Extracts the sign element-wise on the input tensor, returning -1 for negative numbers, 0 for zero, and 1 for positive numbers.</dd>
+        <dt>sqrt()</dt><dd>Computes the square root element-wise on the input tensor, strictly expecting non-negative input values.</dd>
+        <dt>tan()</dt><dd>Computes the trigonometric tangent element-wise on the input tensor, expecting input values to be supplied in radians.</dd>
+        </dl>
+        
+    <p>Finally, the clamp operator:</p>
+    
+        <dl>
+        <dt>clamp(min=<em>minValue</em>, max=<em>maxValue</em>)</dt><dd>Clamp the input tensor element-wise within a range specified by the minimum and maximum values. <code>minValue</code> and <code>maxValue</code> are optional numbers. If either are missing, the corresponding clamp is not performed. The output tensor of the same shape as input.</dd>
+        
     </section>
 
     <section>
         <h4>Logical</h4>
+        <p>Logical operators generate a tensor with the data type <code>uint8</code> with a non-zero value (usually 1) for true and zero for false. For operators with more than one operand, the operands are broadcast as needed. The shape of the output tensor is the same as the shape of the broadcasted input.</p>
+        <dl>
+        <dt>equal(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the corresponding elements are equal, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>notEqual(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the corresponding elements are not equal, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>greater(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the element in the primary tensor is strictly greater than the corresponding element in the <code>other</code> tensor, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>greaterOrEqual(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the element in the primary tensor is greater than or equal to the corresponding element in the <code>other</code> tensor, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>lesser(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the element in the primary tensor is strictly less than the corresponding element in the <code>other</code> tensor, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>lesserOrEqual(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the element in the primary tensor is less than or equal to the corresponding element in the <code>other</code> tensor, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        </dl>
+        
+        <p>The following operators expect their inputs to have the data type <code>uint8</code>:</p>
+        
+        <dl>
+        <dt>logicalNot()</dt><dd>A unary operation that computes the logical inversion element-wise on an input boolean tensor, flipping all true values to <code>0</code> (false) and false values to <code>1</code>.</dd>
+        <dt>logicalAnd(<em>value</em>)</dt><dd>Computes the logical AND operation element-wise between two boolean tensors. Returns a boolean tensor where each position is <code>1</code> (true) only if the elements in both tensors are non-zero, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>logicalOr(<em>value</em>)</dt><dd>Computes the logical OR operation element-wise between two boolean tensors. Returns a boolean tensor where each position is <code>1</code> (true) if at least one of the corresponding elements in either tensor is non-zero, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
+        <dt>logicalXOr(<em>value</em>)</dt><dd>Computes the logical exclusive OR (XOR) operation element-wise between two boolean tensors. Returns a boolean tensor where each position is <code>1</code> (true) if the corresponding elements differ (one is non-zero and the other is zero), and <code>0</code> (false) if they are both zero or both non-zero. Supports implicit broadcasting if the shapes differ.</dd>
+        </dl>
+        
     </section>
 
     <section>
         <h4>Matrix Manipulation</h4>
+        <dl>
+        <dt>matmul(<em>value</em>)</dt><dd>Computes the matrix multiplication of the primary tensor (the layer's input) and the <code>value</code> tensor, as specified by the name of a trainable parameter, an input constant or another layer. The operation is applied strictly to the trailing two feature dimensions of both inputs (interpreting them as rows and columns of a matrix). If either tensor has a rank greater than 2, the leading dimensions (such as batch sizes or attention heads) are treated as batch dimensions and are automatically aligned and broadcasted by the compiler to match. The inner dimensions of the two matrices must match at run-time to satisfy standard linear algebra rules. If the targeted matrix dimensions are not at the trailing end of the resolved runtime layouts, the compiler will automatically inject transpose operations to ensure a safe WebNN compilation.</dd>
+        <dt>gemm(<em>B</em>, <em>C</em>, alpha=<em>number</em>, beta=<em>number</em>, aTranspose=<em>boolean</em>, bTranspose=<em>boolean</em>)</dt><dd>Computes the General Matrix Multiplication (GEMM) expression $\alpha A B + \beta C$, combining a scaled matrix multiplication with a scaled bias tensor addition. The primary tensor (the layer's input) acts as matrix $A$, parameter <code>b</code> specifies matrix $B$, and an optional parameter <code>c</code> specifies the bias tensor $C$. The scalar multipliers <code>alpha</code> and <code>beta</code> both default to <code>1.0</code>. The boolean flags <code>aTranspose</code> and <code>bTranspose</code> default to <code>false</code>; setting either to <code>true</code> instructs the WebNN backend to implicitly transpose the final two dimensions of the associated matrix ($A$ or $B$) prior to multiplication, which is highly optimized at the hardware level. Like <code>matmul</code>, this operation applies to the trailing two feature dimensions of the tensors, and any leading dimensions are automatically managed and broadcasted as batch matrices.</dd>
+        </dl>
     </section>
 
     <section>
