@@ -170,14 +170,18 @@ dense:layers
     
     <p>Block input and output properties are expressed as the block name, followed by a colon then "input" or "output" respectively. This is followed by an optional data type and then a required shape, e.g. <code>model:input float16 shape=[784]</code>. Block properties are terminated with a semicolon. Layers are comma separated. The block <em>name</em> property is used when saving a snapshot. Blocks should name the dimensions when an input or output has more than one dimension, e.g. <code>model:input float32 shape={channels:3, height:28, width:28};</code>. The default dimension name is <em>features</em> for inputs and <em>labels</em> for outputs. The dimension names must be unique, and avoid reserved names: <em>batch</em>, and <em>sequence</em>. The choice of curly braces for shapes with named dimensions is deliberate, and resembles the distinction between JavaScript objects and arrays. Use square brackets for shapes without dimension names.</p>
     
-    <div class="issue">Would it make sense to extend the block syntax to allow for declaration of named constant tensors? This would avoid the need to include lengthy literal definitions in place in layers, and allow for a given constant to be referred to from multiple places. The syntax would declare the constant's name, optional datatype,  its shape and dimension names, then a flat array of values to populate the tensor, e.g. as in the following:
-    <pre class="nohighlight">
-    model:constants
-        pi float32 [] 3.1415926,
-        foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
+    <p>Named constants can be declared and referred to from layers. Here is an example of declaring constants named "pi" and "foo":</P>
+    
+    <pre class="example nohighlight">
+    pi float32 [] 3.1415926;
+    foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
     </pre>
-    where <em>pi</em> is defined as a scalar and <em>foo</em> as a rank 2 tensor with dimensions "a" and "b". You would have the choice of using curly braces for named dimensions or square brackets for just the dimension sizes.
+    <p>where <em>pi</em> is defined as a scalar and <em>foo</em> as a rank 2 tensor with dimensions "a" and "b". You would have the choice of using curly braces for named dimensions or square brackets for just the dimension sizes.</p>
+    
+    <div class="issue">
+    I need to document how names on their own are treated as introducing trainable parameters and given unique integer suffices, e.g. <code>matmul(w)</code> introduces a new parameter with "w" as the prefix, e.g. "w21". If a name is given as value of a property, e.g. "tensor6" in <code>elu(alpha=tensor6)</code>, it is interpreted as the name of previously declared input, constant or the output of the layer with that name. Use <code>node=name</code> for the operator's main argument, e.g. <code>matmul(node=tensor38)</code>. Use the <code>name</code> property to assign a name to a layer, e.g. "tensor81" in <code>add(2, name=tensor81)</code>.
     </div>
+
     
     <section>
     <h3>Tensor Layout</h3>
@@ -787,7 +791,7 @@ gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</
     
         <dl>
         <dt>clamp(min=<em>minValue</em>, max=<em>maxValue</em>)</dt><dd>Clamp the input tensor element-wise within a range specified by the minimum and maximum values. <code>minValue</code> and <code>maxValue</code> are optional numbers. If either are missing, the corresponding clamp is not performed. The output tensor of the same shape as input.</dd>
-        
+        </dl>
     </section>
 
     <section>
@@ -815,22 +819,77 @@ gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</
 
     <section>
         <h4>Matrix Manipulation</h4>
+        <p>The <em>matmul</em> operator is used for fully connected dense layers in conjunction and the <em>add</em> operator: $y = W\cdot x + b$. In transformers, <em>matmul</em> is the core of the attention mechanism, computing the similarity of query and key matrices to produce attention scores. It also plays a frequent role in calculating gradients as part of machine learning.</p>
         <dl>
         <dt>matmul(<em>value</em>)</dt><dd>Computes the matrix multiplication of the primary tensor (the layer's input) and the <code>value</code> tensor, as specified by the name of a trainable parameter, an input constant or another layer. The operation is applied strictly to the trailing two feature dimensions of both inputs (interpreting them as rows and columns of a matrix). If either tensor has a rank greater than 2, the leading dimensions (such as batch sizes or attention heads) are treated as batch dimensions and are automatically aligned and broadcasted by the compiler to match. The inner dimensions of the two matrices must match at run-time to satisfy standard linear algebra rules. If the targeted matrix dimensions are not at the trailing end of the resolved runtime layouts, the compiler will automatically inject transpose operations to ensure a safe WebNN compilation.</dd>
-        <dt>gemm(<em>B</em>, <em>C</em>, alpha=<em>number</em>, beta=<em>number</em>, aTranspose=<em>boolean</em>, bTranspose=<em>boolean</em>)</dt><dd>Computes the General Matrix Multiplication (GEMM) expression $\alpha A B + \beta C$, combining a scaled matrix multiplication with a scaled bias tensor addition. The primary tensor (the layer's input) acts as matrix $A$, parameter <code>b</code> specifies matrix $B$, and an optional parameter <code>c</code> specifies the bias tensor $C$. The scalar multipliers <code>alpha</code> and <code>beta</code> both default to <code>1.0</code>. The boolean flags <code>aTranspose</code> and <code>bTranspose</code> default to <code>false</code>; setting either to <code>true</code> instructs the WebNN backend to implicitly transpose the final two dimensions of the associated matrix ($A$ or $B$) prior to multiplication, which is highly optimized at the hardware level. Like <code>matmul</code>, this operation applies to the trailing two feature dimensions of the tensors, and any leading dimensions are automatically managed and broadcasted as batch matrices.</dd>
+        <dt>gemm(<em>B</em>, <em>C</em>, alpha=<em>number</em>, beta=<em>number</em>, aTranspose=<em>boolean</em>, bTranspose=<em>boolean</em>)</dt><dd>Computes the General Matrix Multiplication (GEMM) expression $\alpha A B + \beta C$, combining a scaled matrix multiplication with a scaled bias tensor addition. The primary tensor (the layer's input) acts as matrix $A$, parameter <code>B</code> specifies matrix $B$, and an optional parameter <code>C</code> specifies the bias tensor $C$. The scalar multipliers <code>alpha</code> and <code>beta</code> both default to <code>1.0</code>. The boolean flags <code>aTranspose</code> and <code>bTranspose</code> default to <code>false</code>; setting either to <code>true</code> instructs the WebNN backend to implicitly transpose the final two dimensions of the associated matrix ($A$ or $B$) prior to multiplication, which is highly optimized at the hardware level. Like <code>matmul</code>, this operation applies to the trailing two feature dimensions of the tensors, and any leading dimensions are automatically managed and broadcasted as batch matrices.</dd>
         </dl>
     </section>
 
     <section>
         <h4>Convolution</h4>
+        <p>These operators are used in Convolutional Neural Networks (CNN) for learning, feature extraction and spatial manipulation. <em>conv2d</em> is used to extract local spatial features from input images. This includes edges, corners, textures, or higher-level patterns progressively through deeper layers. A small learnable kernel slides across the spatial dimensions of the input, computing weighted sums for each local region. This reduces spatial redundancy, emphasizing features useful for classification or recognition.</p>
+        <p><em>convTranspose2D</em> performs learnable upsampling, expanding spatial dimensions of feature maps. It is the inverse of conv2d, spreading or broadcasting input activations across a larger area, and often used to reconstruct high-resolution outputs from compressed representations. It increases height and width while preserving learned features for generative tasks. It can introduce artifacts like checkerboarding if the stride and kernel configuration are not carefully chosen.</p>
+        
+        <dl>
+        <dt>conv2d(<em>filter</em>, padding=<em>{height:number, width:number]</em>, strides=<em>{height:number, width:number}</em>, dilations=<em>{height:number, width:number}</em>, groups=<em>integer</em>, inputLayout=<em>string</em>, filterLayout=<em>string</em>)</dt><dd>Computes a 2D spatial convolution by sliding a weight <code>filter</code> tensor across the input feature map to extract localized spatial features. The <code>inputLayout</code> string configures the expected ordering of the dimensions (<code>nchw</code> for channel-first or <code>nhwc</code> for channel-last), allowing the compiler to  parse and map the global batch ($N$), channel ($C$), and spatial spatial ($H, W$) axes. Similarly, <code>filterLayout</code> specifies the structure of the weight tensor: <code>iohw</code>, <code>hwoi</code> or <code>ohwi</code>. 
+  <br><br>
+  Optional tuning arrays include <code>padding</code> (explicit pixel boundaries added around the input, matching <code>[top, bottom, left, right]</code>), <code>strides</code> (the pixel stepping increment along the height and width, matching <code>[height, width]</code>), and <code>dilations</code> (the receptive field spacing between filter elements, matching <code>[height, width]</code>). The <code>groups</code> parameter partitions the input channels into independent calculation blocks for depthwise or grouped convolutions.</dd>
+        <dt>convTranspose2D(<em>filter</em>, padding=<em>{height:number, width:number]</em>, strides=<em>{height:number, width:number}</em>, dilations=<em>{height:number, width:number}</em>, outputPadding=<em>{height:number, width:number}</em>, outputSizes=<em>{height:number, width:number}</em>, groups=<em>integer</em>, inputLayout=<em>string</em>, filterLayout=<em>string</em>)</dt><dd>Computes a 2D transposed convolution (sometimes referred to as a fractionally strided convolution or "deconvolution") to upsample spatial feature maps, a mechanic widely used in generative models and segmentation networks. The layout strings <code>inputLayout</code> and <code>filterLayout</code> map the dynamic runtime axes to WebNN exactly as they do in <code>conv2d</code>. The spatial upscaling scale is primarily determined by the <code>strides</code> array, which acts as a multiplier on the output canvas. 
+  <br><br>
+  To resolve spatial ambiguity caused by integer division in stride math, developers can explicitly control the output canvas size using either <code>outputPadding</code> (extra pixels added to the bottom and right edges of the output tensor) or an explicit <code>outputSizes</code> layout block. The remaining parameters (<code>padding</code>, <code>dilations</code>, and <code>groups</code>) operate as the inverse of standard convolutional operations to govern weight spatial distribution.</dd>
+        </dl>
     </section>
 
     <section>
         <h4>Pooling</h4>
+        <p>Pooling operations are used in Convolutional Neural Networks (CNN) to compress images while retaining the most important information. Pooling is applied after convolution layers for dimensionality reduction, translation invariance and feature selection. Progressively reducing the spatial dimensions, pooling layers enable the network to build a hierarchy of features. Lower layers capture fine details, while higher layers focus on more abstract and global features. The choice of pooling size, stride, and type needs to balance dimensionality reduction and feature preservation.</p>
+        <p>Each of the operators support the same options:</p>
+        <dl>
+        <dt>windowDimensions=<em>{height:number, width:number}</em></dt><dd>Specifies the dimensions of the sliding window. The default value for the window dimensions are the height and width dimensions of the input shape.</dd>
+        <dt>paddingBeginning=<em>{height:number, width:number}</em></dt><dd>Specifies the additional rows and columns added to the beginning of each spatial dimension of the convolution input. No padding is the default.</dd>
+        <dt>paddingEnding=<em>{height:number, width:number}</em></dt><dd>Specifies the additional rows and columns added to the ending of each spatial dimension of the convolution input. No padding is the default.</dd>
+        <dt>strides=<em>{height:number, width:number}</em></dt><dd>Specifies the additional rows and columns added to the beginning and ending of each spatial dimension of the convolution input. The default values are zero.</dd>
+        <dt>dilations=<em>{height:number, width:number}</em></dt><dd>Specifies the dilation factor for each spatial dimension applied on the convolution filter (kernel). The default value is one pixel.</dd>
+        <dt>layout=<em>string</em></dt><dd>This is either <code>nchw</code> or <code>nhwc</code>, representing the run-time tensor layout of [batch, channels, height, width] and [batch, height, width, channels], respectively.</dd>
+        <dt>outputShapeRounding=<em>string</em></dt><dd>This is either <code>floor</code> or <code>ceil</code>.</dd>
+        <dt>outputSizes=<em>{height:number, width:number}</em></dt><dd>Specifies the sizes of the two spatial dimensions of the output tensor. When the output sizes are explicitly specified, the outputShapeRounding is ignored. If not specified, the output sizes are automatically computed.</dd>
+        </dl>
+        
+        <p>Here are the operators:</p>
+        <dl>
+        <dt>averagePool2d(<em>options</em>)</dt><dd>Computes the average of the values in the region $R$, providing a balanced representation.
+        It sums the values and divides the result by the total number of elements ‭‬ falling within that window region.
+‭$$\text{averagePool2d}(y, x) = \frac{1}{N} \sum_{(k_h, k_w) \in R(y, x)} x(k_h, k_w)$$‬‭
+You can specify whether ‭‬$N$ should include or ignore padding pixels when the window slides over the tensor edges.
+        ‭</dd>
+        
+        <dt>l2Pool2d(<em>options</em>)</dt><dd>Computes the L2-norm (the Euclidean length) of the local window vector. It squares every individual value within the window, sums those squares together, and extracts the square root of the final sum.
+‭$$\text{l2Pool2d}(y, x) = \sqrt{\sum_{(k_h, k_w) \in R(y, x)} \left(x(k_h, k_w)\right)^2}$$‬‭
+This operates similarly to average pooling but gives a much higher mathematical weight to prominent spikes or high-energy features within the pool window.</dd>
+        
+        <dt>maxPool2d(<em>options</em>)</dt><dd>Selects the maximum value from the region $R$ covered by the filter, preserving the most significant features. $$\text{maxPool2d}(y, x) = \max_{(k_h, k_w) \in R(y, x)} x(k_h, k_w)$$‬‭</dd>
+        </dl>
     </section>
 
     <section>
         <h4>Activation</h4>
+        <p>Activation functions in neural networks serve a critical role: they introduce non-linearity into the model, allowing it to learn complex patterns and relationships in data. Without activation functions, a neural network would behave like a simple linear regression model, unable to capture intricate features. They determine whether a neuron should be "activated" based on the weighted sum of its inputs, influencing the network's output and learning capability.</p>
+        <dl>
+        <dt>linear(alpha=<em>number</em>, beta=<em>number</em>)</dt><dd>Calculates a linear function $y = \alpha \cdot x + \beta$ on the input tensor.</dd>
+        <dt>elu(alpha=<em>number</em>)</dt><dd>Computes the Exponential Linear Unit (ELU) activation function element-wise on the input tensor.  It passes positive values through completely unchanged, while negative values are exponentially scaled according to the formula $y = \alpha(e^x - 1)$.  The <code>alpha</code> parameter defaults to <code>1.0</code> and governs the structural saturation value for negative inputs, helping push mean activations closer to zero for improved gradient flow.</dd>
+        <dt>gelu()</dt><dd>Computes the Gaussian Error Linear Unit (GELU) activation function element-wise on the input tensor. 
+  It weights input values by their value under a cumulative Gaussian distribution, multiplying the input by the probability that a random variable is less than or equal to that input. This non-linear blending provides a smooth, probabilistic threshold heavily utilized in transformer architectures.</dd>
+        <dt>leakyRelu(alpha=<em>number</em>)</dt><dd>Computes the Leaky Rectified Linear Unit (Leaky ReLU) activation function element-wise on the input tensor. It passes positive values through completely unchanged, while assigning a small, constant negative slope to values below zero according to the formula $y = \max(x, \alpha x)$. The <code>alpha</code> parameter defaults to <code>0.01</code> and prevents "dying neurons" by ensuring a continuous, non-zero gradient across the entire negative spectrum.</dd>
+        <dt>prelu(alpha=<em>name</em>)</dt><dd>Computes the Parametric Rectified Linear Unit (PReLU) activation function element-wise on the input tensor. The <code>alpha</code> parameter serves as the negative-side scaling factor. Unlike other activation functions where this factor is a static scalar, <code>prelu</code> expects a parameter weight tensor whose values are optimized during deep learning training. The DAG compiler utilizes type and shape inference on the <code>alpha</code> argument to automatically validate its structure at build time. If the inferred shape of the <code>alpha</code> tensor differs from the input tensor, the compiler handles the necessary layout alignment and implicitly broadcasts the weights across matching named feature dimensions (such as channel-wise scaling).</dd>
+        <dt>relu()</dt><dd>Computes the Rectified Linear Unit (ReLU) activation function element-wise on the input tensor. 
+  It applies a strict thresholding operation that clamps all negative values directly to zero while passing positive values through entirely unmodified, satisfying the linear expression $y = \max(0, x)$.</dd>
+        <dt>hardSwish</dt><dd></dd>
+        <dt>sigmoid</dt><dd></dd>
+        <dt>softmax</dt><dd></dd>
+        <dt>softplus</dt><dd></dd>
+        <dt>softsign</dt><dd></dd>
+        <dt>tanh</dt><dd></dd>
     </section>
 
     <section>
