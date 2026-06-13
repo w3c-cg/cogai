@@ -12,7 +12,7 @@ As an introduction, please take a look at the following demos:
 * [Testing against a small dataset](https://www.w3.org/2026/webnnm/examples/test3.html)
 * [Training against a small dataset](https://www.w3.org/2026/webnnm/examples/test4.html)
 
-A detailed specification for the `webnnm.js` library is in preparation and will be linked from here.
+A [detailed specification for the `webnnm.js` library](https://w3c-cg.github.io/cogai/WebNNM/) is in preparation as a Community Group Report.
 
 ## Developer Notes
 `webnnm.js` is a work in progress. We are extending the library to cover all of the WebNN operators as well as a few others, e.g. to handle skip connections, transformers, and newer operators such as `squaremax`. The library is object-oriented with `NNModel` as the top level class. Models are parsed into instances of `NNBlock`, `NNLayer` and `NNTensor`. These are in turn mapped into a directed acyclic graph (DAG) of nodes using the `NNTopology` and `NNNode` classes.  The latter is the parent class for operator specific subclasses that support tensor data type and shape inference, including automatic casting. `NNTopology` sorts the DAG nodes into execution order, pruning nodes that aren't on a path from an input, parameter or literal to a model output. The `NNEngine` class transpiles the DAG into executable WebNN graphs. The `NNContext` class provides the context for running models in inference mode.
