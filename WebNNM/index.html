@@ -56,6 +56,13 @@
       margin-top: 1em;
       margin-bottom: 2em;
     }
+    
+    pre {
+      white-space: pre-wrap;       /* Respected spaces/newlines, but wraps when it hits the edge */
+      word-wrap: break-word;       /* Legacy support for older browsers */
+      overflow-wrap: break-word;   /* Forces long words/strings (like URLs or hex data) to break if they exceed container width */
+    }
+    
     table {
       border-collapse: collapse;
       width: 100%;
@@ -170,16 +177,17 @@ dense:layers
     
     <p>Block input and output properties are expressed as the block name, followed by a colon then "input" or "output" respectively. This is followed by an optional data type and then a required shape, e.g. <code>model:input float16 shape=[784]</code>. Block properties are terminated with a semicolon. Layers are comma separated. The block <em>name</em> property is used when saving a snapshot. Blocks should name the dimensions when an input or output has more than one dimension, e.g. <code>model:input float32 shape={channels:3, height:28, width:28};</code>. The default dimension name is <em>features</em> for inputs and <em>labels</em> for outputs. The dimension names must be unique, and avoid reserved names: <em>batch</em>, and <em>sequence</em>. The choice of curly braces for shapes with named dimensions is deliberate, and resembles the distinction between JavaScript objects and arrays. Use square brackets for shapes without dimension names.</p>
     
-    <p>Named constants can be declared and referred to from layers. Here is an example of declaring constants named "pi" and "foo":</P>
+    <p>Named constants can be declared and referred to from layers. Here is an example of declaring constants named "pi", "foo" and "bar":</P>
     
     <pre class="example nohighlight">
     pi float32 [] 3.1415926;
-    foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
+    foo int32 [4] [1, 1, 0, 0];
+    bar {a:2, b:3} [0, 1, 2, 3, 4, 5];
     </pre>
-    <p>where <em>pi</em> is defined as a scalar and <em>foo</em> as a rank 2 tensor with dimensions "a" and "b". You would have the choice of using curly braces for named dimensions or square brackets for just the dimension sizes.</p>
+    <p>where <em>pi</em> is defined as a scalar and <em>bar</em> as a rank 2 tensor with layout [a, b]. You have the choice of using curly braces with named dimensions or square brackets for just the dimension sizes.</p>
     
     <div class="issue">
-    I need to document how names on their own are treated as introducing trainable parameters and given unique integer suffices, e.g. <code>matmul(w)</code> introduces a new parameter with "w" as the prefix, e.g. "w21". If a name is given as value of a property, e.g. "tensor6" in <code>elu(alpha=tensor6)</code>, it is interpreted as the name of previously declared input, constant or the output of the layer with that name. Use <code>node=name</code> for the operator's main argument, e.g. <code>matmul(node=tensor38)</code>. Use the <code>name</code> property to assign a name to a layer, e.g. "tensor81" in <code>add(2, name=tensor81)</code>.
+    I want to use icons to clearly distinguish trainable from non-trainable parameters, e.g. 🎓 and 🔒, but do I need the latter? The names given for trainable parameters are checked to see if they match layer names. If not the name is used as a prefix by gensym, e.g. "w" becomes "w1" or "w2" etc.  Layer names are declared with the layer name option and gain suffices when a layer is cloned by instantiating a block and injecting its layers. Non-trainable parameters are inline literals or names for shared definitions. Model developers are encouraged to use naming conventions that clearly separate trainable parameter names from layer names.
     </div>
 
     
@@ -565,12 +573,18 @@ window.addEventListener("load", async () => {
   </section> 
   <section>
     <h2>Supported Operators</h2>
-    <p>This section lists the WebNN operators supported by WebNNM along with additional operators, e.g. for skip connections and transformers, that are internally translated into WebNN operators.</p>
-
+    <p>This section lists the WebNN operators supported by WebNNM along with additional operators, e.g. for skip connections and transformers, that are internally translated into WebNN operators. Each operator's signature has a sequence of comma separated arguments, which are either order-dependent operands or order-independent properties of the form <code>name = value</code>.</p>
+    <ul>
+    <li><b>Positional arguments = Tensors</b> (The active data/operands flowing through the graph, whether they are constants, trained weights or previous layer outputs).</li>
+    <li><b>Named keyword properties = Structural Settings</b> (The configurations that shape the network layout, like axis dimensions, strides, or hardcoded scaling limits).</li>
+    </ul>
+    <p>The layer's input is implicitly the first operand.  <code>softmax()</code>, thus has one operand, corresponding to the layer's input, whilst <code>add(b)</code> has two operands: the first is the layer's input and the second is the trainable parameter "b" which is given a unique numeric suffix when instantiated into the model's DAG. Names for constants and layers take precedence over parameters, e.g. if "pi" has been defined as a constant then <code>mul(pi)</code> will multiply the layer's input by the constant pi. Whilst operands are position dependent, options are position independent and can be given in any order. Options are non-trainable.</p>
+    <p>WebNNM seeks to make life easier for novices whilst providing experts with the control they seek. To realise this ambition, models are expressed in a high-level notation that uses meaningfully named tensor dimensions and omits batch size and sequence lengths, which are applied when compiling models into executable WebNN graphs or on export to MLIR. This allows tensors to be adapted to match the layouts provided by the datasets. The models will often only need to deal with feature layout, e.g. [channels, height, width] for images. Using meaningfully names makes layers easier to understand than the integer indices expected by WebNN.</p>
+    
     <section>
     <h3>WebNNM Operators</h3>
-
-    <p>WebNNM seeks to make life easier for novices whilst providing experts with the control they seek. To realise this ambition, models are expressed in a high-level notation that uses meaningfully named tensor dimensions and omits batch size and sequence lengths, which are applied when compiling models into executable WebNN graphs or on export to MLIR. This allows tensors to be adapted to match the layouts provided by the datasets. The models will often only need to deal with feature layout, e.g. [channels, height, width] for images. Using meaningfully names makes layers easier to understand than the integer indices expected by WebNN.</p>
+    
+    <p>Operators inherited from <a href="https://www.w3.org/TR/webnn/">WebNN</a>:</p>
     
     <table>
     <tr>
@@ -636,102 +650,97 @@ window.addEventListener("load", async () => {
     <section>
     <h4>Tensor Creation</h4>
         
-    <p>The high-level model syntax caters for model inputs and outputs. Numeric literals or lists thereof are compiled into WebNN constants. Parameters are expressed as named operands for layers. Here are some examples:</p>
+    <p>The high-level model syntax caters for model inputs and outputs. Numeric literals can be used in place, or named and used elsewhere. Parameters are expressed as named operands for layers. Here are some examples:</p>
         
     <ul>
     <li><code>model:input float16 shape={channels:3, height:256, width:256}</code> An input for the model block with float16 for the datatype, and a shape for an image with named dimensions.</li>
         
     <li><code>model:output float32 shape=[32]</code> An output for the model block with float32 for the datatype and a shape with size 32, e.g. as a probability distribution across labelled classes.</li>
         
-    <li><code>matmul(w)</code>  A matmul layer with "w" as the weight parameter</li>
+    <li><code>matmul(w)</code>  A matmul layer with "w" as the trainable weight parameter. This will be given a unique suffix, e.g. "w1", when instantiated into the model's DAG to differentiate it from other instances. The data type and shape are determined automatically.</li>
         
     <li><code>add(1.5)</code> An add layer that adds the number 1.5 to the layer's input, using broadcasting to match the input tensor's shape.</li>
+    
+    <li><code>pi float32 [] 3.1415926</code> Declares "pi" as a named float32 scalar constant.</li>
+    
+    <li><code>foo int32 [4] [1, 1, 0, 0]</code> Declares "bar" as the name of a constant int32 tensor with shape [4], and fill it with the listed values.</li>
+
+    <li><code>bar {a:2, b:3} [0, 1, 2, 3, 4, 5]</code> Declares "foo" as the name of constant tensor with shape [2, 3] and layout [a, b]. The tensor is filled from the one dimensional buffer, which must have a length equal to the tensor's size, i.e. the product of the size of the tensor's dimensions, in this example, $size = 2 \times 3 = 6$</li>
     </ul>
-    
-    <p><em>Note: Issue 1 proposes an extended syntax to allow models to declare a set of named constant tensors for use as operands or option values as an alternative to literal values. Here is an example:</em></p>
-    
-    <pre class="nohighlight">
-    model:constants
-        pi float32 [] 3.1415926,
-        foo {a:2, b:3} [0, 1, 2, 3, 4, 5];
-    </pre>
     </section>
 
     <section>
     <h4>Tensor Manipulation</h4>
         
     <dl>
-    <dt>concat(inputs, axis=<em>name</em>)</dt><dd>Concatenates the input tensors along a named axis. If <em>inputs</em> is a variable list of one or more comma separated layer names, the tensors output by those layers will be concatenated starting with the input from the previous layer. If you want to concatenate a list of tensors excluding the input from the previous layer, you must enclose the list in square brackets.</dd>
+    <dt>concat(<em>tensor, tensor, ...,</em> axis=<em>name</em>)</dt>
+    <dt>concat([tensor, tensor, ...], axis=<em>name</em>)</dt>
+    <dd>Concatenates the input tensors along a named axis. The operands is a variable list of tensors, which will be concatenated starting with the input from the previous layer. If you want to concatenate a list of tensors excluding the input from the previous layer, you must enclose the list in square brackets.</dd>
     <dt>expand(newShape=<em>{...}</em>)</dt><dd>Expands any dimension of size 1 in the feature dimensions of the tensor from the previous layer to a larger size according to a target shape. The target shape is declared using curly braces. Inside the braces, dimensions targeted for expansion are specified with their name and a positive integer target size (e.g., <code>channels:4</code>). Dimensions that should be left unchanged are specified by their name alone (e.g., <code>height</code>), signaling to the compiler to inherit their size directly from the input tensor. Global dimensions like batch size and sequence length are omitted from this property and are automatically preserved by the backend. If the feature dimensions inside the braces are listed in a different order from the tensor passed from the previous layer, a transpose operation will be automatically inserted to permute the dimensions to match the exact layout order given in the layer.</dd>
-    <dt>gather(shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>This is used to select and extract specific slices of a tensor along a given axis, using indices specified by another tensor. Think of it like using a list of index numbers to pick specific items out of an array, but scaled up to multi-dimensional data. <em>shape</em> defines the shape of a tensor using named dimensions, e.g. "{a:2, b:2}". This tensor is filled from the one dimensional array given by <em>data</em>. Let's say your full compiled layout looks like this:
-    <ul>
-    <li><em>Input Shape:</em> { batch: 32, sequence: 128, embedding: 768 }</li>
-    <li>Operation: gather(shape={ beam: 4, candidates: 2 }, data=[...], axis='sequence')</li>
-    </ul>
-    Resulting Output:
-    <ul>
-    <li><em>shape:</em> { batch: 32, beam: 4, candidates: 2, embedding: 768 }</li>
-    </ul>
-    where the dimension named by <em>axis</em> has been replaced by the given shape.
-    <div class="issue">
-    <p>Some advanced use cases involve gathering along the batch or sequence dimensions that are deliberately omitted from the high-level model syntax, and dealt with when compiling to WebNN. These use cases may require relative positions, relative sizes, sliding-windows, or symbolic variables for the shape. Here are some examples showing potential syntax to address these use cases:</p>
-    <pre>// Use Case 1: Fixed/Static size (Autoregressive token generation)
-gather(shape={ sequence: -1 }, axis='sequence')
 
-// Use Case 2: Strided Downsampling (Relative math string)
-gather(shape={ sequence: 50% }, axis='sequence') 
-
-// Use Case 3: Dynamic binding to another layer's runtime size
-gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</pre>
-    <p>Positive integers are relative to the start of the dimension, and negative integers are relative to the end of the dimension, e.g. -1 for the last element. Percentage values denote a fraction of the dimension size. The last example involves a symbolic reference to another named layer. For multimodal models, the sequence dimensions may be specific to each modality, necessitating distinct names.</p>
-    </div>
+    <dt><p>gather(indices=<em>tensor</em>, axis=<em>name</em>)</dt><dd> This generates the output tensor by gathering all data for given positions along the named axis. The positions are relative to the start of the axis for positive indices, and relative to the end of the axis for negative indices. As an example, given an image, you could extract all pixels at the same height in the image. For this axis=height and indices is a single-valued array with the desired height index. You would generalise indices to a multi-valued array to pick pixels at selected heights. Gather copies the input dimensions before the target axis, then all of dimensions in the indices tensor, and finally the input dimensions after the target axis.</p>
+    <p><em>indices</em> is a non-trainable n-dimensional tensor whose values are signed or unsigned integers. If $N$ is the size of the input dimension named by <em>axis</em>, then values must be in the range $-N$ (inclusive) to $N$ exclusive. The output tensor will have rank equal to the rank of the layer's input tensor plus the rank of  <em>indices</em> minus 1. Models either declare the <em>indices</em> tensor as a named constant or generate it as the output of a named layer.</p>
+    <p>Some use cases involve gathering along the batch or sequence dimensions that are missing in the high-level model syntax, and dealt with when compiling to WebNN. Here is an example showing the run-time tensor shapes and layouts:</p>
+    <ul>
+    <li>Input Shape: { batch: 32, sequence: 128, embedding: 768 }</li>
+    <li>Indices shape: { beam: 4, candidates: 2 }</li>
+    <li>Axis name: sequence</li>
+    <li>Output shape: { batch: 32, beam: 4, candidates: 2, embedding: 768 }<br>
+    where the dimension named by <em>axis</em> has been replaced by the given shape.</li>
+    </ul>
+    <p class="issue">Is it worth allowing indices to be defined in place in the layer? One way to do that would be to use <em>shape</em> and <em>data</em> properties as an alternative to <em>indices</em>, using the same syntax and meaning as for constant tensors. If adopted, this would also apply to <em>gatherElements</em>, <em>scatterElements</em>, <em>gatherND</em> and <em>scatterND</em>.</p>
     </dd>
-    <dt>gatherElements(shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>This operator acts like a target index map. It pairs each individual index with its exact coordinate location to pluck single, specific values from along the targeted axis. The tensor specified by <em>shape</em> and <em>data</em> is subject to several constraints: a) it must have the same rank as the input tensor, b) every named dimension in the shape must match a dimension in the input, and c) for every dimension ‭‬ that is not the target axis, the size in indices must be less than or equal to the size in input (usually they are identical). The layer's output shape and layout are the same as specified by the <em>shape</em> argument. Here is an example:
+
+    <dt>gatherElements(indices=<em>name</em>)</dt><dd>This operator acts like a target index map. It pairs each individual index with its exact coordinate location to pluck single, specific values from along the targeted axis. The <em>indices</em> tensor is subject to several constraints: a) it must have the same rank as the input tensor, b) every named dimension in the shape must match a dimension in the input, and c) for every dimension ‭‬that is not the target axis, the size in indices must be less than or equal to the size in input (usually they are identical). The layer's output shape and layout are the same as specified by the <em>shape</em> argument. Here is an example:
     
     <ul>
     <li><em>Input Shape:</em> { batch: 32, sequence: 128, vocabulary: 50000 }</li>
-    <li>Operation: gatherElements(shape={ vocabulary: 5 }, data=[...], axis='vocabulary') (e.g., getting top-5 beams).</li>
-    </ul>
-    Resulting Output:
-    <ul>
-    <li><em>shape:</em> { batch: 32, sequence: 128, vocabulary: 5 }</li>
+    <li>Indices shape: { vocabulary: 5 }
+    <li>axis=vocabulary, e.g. getting top-5 beams</li>
+    <li>Output Shape: { batch: 32, sequence: 128, vocabulary: 5 }</li>
     </ul>
     Note that the batch and sequence dimensions are implicitly copied over from the input.
-    <p class="issue">similar considerations apply as for <em>gather</em>, e.g. the use of relative positions for omitted dimensions, e.g. for batch slicing.</p>
     </dd>
-    <dt>scatterElements(updates, shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>If gatherElements is about extracting data along an axis based on a map of indices, scatterElements (often used for things like sparse updates, scatter-add in graph neural networks, or applying target masks) is the exact inverse. It writes data from a updates tensor into an input tensor at the positions specified by an indices tensor. The <em>updates</em> operand which names an input, constant or the output of another layer.
-    <p class="issue">similar considerations apply as for <em>gather</em>, e.g. the use of relative positions for omitted dimensions, e.g. for batch slicing.</p>
+    
+    <dt>scatterElements(updates, indices=<em>name</em>, axis=<em>name</em>)</dt><dd>If gatherElements is about extracting data along an axis based on a map of indices, scatterElements (often used for things like sparse updates, scatter-add in graph neural networks, or applying target masks) is the exact inverse. It writes data from the updates tensor into a copy of the input tensor at the positions specified by the non-trainable indices tensor. The <em>updates</em> operand is either a trainable parameter, or the name for the output of another layer.</p>
     </dd>
-    <dt>gatherND(shape={...}, coords=[name, name, ...], data=[...])</dt>
-    <dt>gatherND(indices=name)</dt>
-    <dd><p>Extracts slices from the input tensor based on multi-dimensional coordinates. In the first signature, coordinates are explicitly constructed from the lookup grid defined in <code>shape</code>, the target axes mapped in <code>coords</code>, and the flat array of values in <code>data</code>. The compiler leverages the runtime layout of the input tensor to expand the flat <code>data</code> array into the full shape and layout required by the WebNN <code>indices</code> operand. By default, the compiler assumes that this coordinate lookup should be applied uniformly across every batch element and sequence position independently.</p>
-    <div class="example">
-    <p><strong>Example (First Signature):</strong> Consider an input tensor with a feature layout of <code>['classes', 'channels']</code>. If a developer wants to extract specific channels for two distinct classes across the entire network, they can write:</p>
-    <pre><code>gatherND(shape={picks: 2}, coords=[classes, channels], data=[0, 15, 2, 4])</code></pre>
-    <p>At compile time, if the dataset introduces global dimensions to form a full layout of <code>['batch', 'seq', 'classes', 'channels']</code>, the compiler automatically up-samples the 4-element <code>data</code> array. It generates a full coordinate tensor that maps those exact class and channel pairs independently for every individual batch element and sequence position, shielding the developer from managing the global dimension loops.</p>
-    </div>
-    <p>In the second signature, the layer skips automatic coordinate expansion and directly utilizes the <code>indices</code> tensor provided by the output of a named layer. This addresses use cases where a uniform approach to coordinate lookup breaks down, e.g. a model using a mixture of experts will route tokens within the same sequence to different neural network "experts". An image classification model needs to select different bounding boxes for each image in the batch. A similar consideration applies to graph neural networks. When training models efficiently, developers could pack multiple variable-length sequences into a single tensor row to avoid wasting memory on zero-padding tokens. The gatherND operation needs to extract just the valid tokens while ignoring the padding.</p>
-</dd>
-    <dt>scatterND(updates, shape=<em>{...}</em>, data=<em>[...]</em>, axis=<em>name</em>)</dt><dd>Scatter slices of values from the update tensor atop a copy of the input tensor according to the indices. This operator is similar to <em>gatherND</em> with the addition of the <em>updates</em> operand which names an input, constant or the output of another layer.</dd>
-    <dt>where(condition, trueValue, falseValue)</dt><dd>Selects the values from the trueValue or the falseValue tensor depending on the corresponding values of the condition tensor, where non-zero is true and zero is false.</dd>
-    <dt>pad(beginningPadding, endPadding, mode=<em>string</em>, value=<em>integer</em>)</dt><dd>Inflate the tensor with constant or mirrored values on the edges. <em>beginningPadding</em> is an array of length equal to the rank if the layer's input. Each value corresponds to the number of padding values to add before the content in that dimension. <em>endPadding</em> is similar, but applies to values added  after the content in each dimension. The mode option is <em>constant</em>, <em>edge</em> or <em>reflection</em>. <em>value</em> is the padding value, with a default of 0.</dd>
-    <dt>reshape(newShape=<em>{...}</em>)</dt><dd>Reshapes a tensor to a new shape. The shape can be specified using curly braces  to declare dimension names and sizes, or using square brackets for just the dimension sizes.</dd>
-    <dt>slice(starts, sizes, strides=<em>list</em>)</dt><dd>Produces a slice from the input tensor. <em>starts</em> lists the (zero based) starting index for each dimension. <em>sizes</em> correspondingly lists the number of elements to copy across from each dimension. The <em>strides</em> option lists the stride to step over each dimension in the input tensor. Stride must be zero or positive, and defaults to zero.</dd>
-    <dt>split(splits, axis=<em>name</em>)</dt><dd>Splits the input tensor into a number of sub tensors along the given axis. <em>splits</em> is either a positive integer or a list thereof. In the former case, it must evenly divide the dimension size of the input tensor along the specified axis. If it is a list, each element specifies the size of the corresponding output tensor along the axis. The sum of sizes must equal to the dimension size of input along the axis. The <em>axis</em> option names the dimension along which to split, defaulting to the first feature dimension.</dd>
-    <dt>transpose(permutation=<em>[name, name, ...]</em>)</dt><dd>  Permutes the dimensions of the layer's input tensor according to the specified <code>permutation</code> list, which lists all of the feature dimensions in the desired order. The compiler will automatically isolate and preserve global dimensions (like batch size and sequence length) in their original positions. For example, transposing a vision feature map from <code>[height, width, channels]</code> to <code>[channels, height, width]</code> automatically preserves the batch dimension at the front, achieving an NHWC to NCHW shift seamlessly.
+    
+    <dt>gatherND(indices=<em>name</em>)</dt>
+    <dd><p>The non-trainable indices array contains entire coordinates into the input tensor, with the rightmost dimension holding the number of dimensions per coordinate. So an indices tensor of shape [10,1] holds 10 single-axis coordinates, and a shape of [4,3] holds 4 indices of 3D coordinates. The values are integers in the range $-N$ (inclusive) to $N$ (exclusive), where $N$ is the is the size of the corresponding input dimension, and a negative index means indexing from the end of the corresponding dimension.</p>
+    </dd>
+    
+    <dt>scatterND(updates, indices=<em>name</em></em>, axis=<em>name</em>)</dt>
+    <dd>Scatter slices of values from the <em>updates</em> tensor atop a copy of the input tensor according to the non-trainable coordinates. This operator is similar to <em>gatherND</em> with the addition of the <em>updates</em> operand which is either a trainable parameter, or the name for the output of another layer.</dd>
+    
+    <dt>where(trueValue, falseValue, condition=<em>tensor</em>)</dt><dd>Selects the values from the trainable trueValue or  falseValue tensors depending on the corresponding values of the non-trainable condition tensor, where non-zero is treated as true and zero as false.</dd>
+
+    <dt>pad(beginningPadding=<em>list</em>, endPadding=<em>list</em>, mode=<em>string</em>, value=<em>integer</em>)</dt>
+    <dd>Inflate the tensor with constant or mirrored values on the edges. <em>beginningPadding</em> is an array of length equal to the rank if the layer's input. Each value corresponds to the number of padding values to add before the content in that dimension. <em>endPadding</em> is similar, but applies to values added  after the content in each dimension. The mode option is <em>constant</em>, <em>edge</em> or <em>reflection</em>. <em>value</em> is the padding value, with a default of 0. None of the pad layer arguments are trainable.</dd>
+
+    <dt>reshape(newShape=<em>{...}</em>)</dt><dd>Reshapes a tensor to a non-trainable new shape. The shape can be specified using curly braces  to declare dimension names and sizes, or using square brackets for just the dimension sizes.</dd>
+
+    <dt>slice(starts=<em>list</em>, sizes=<em>list</em>, strides=<em>list</em>)</dt><dd>Produces a slice from the input tensor. <em>starts</em> lists the (zero based) starting index for each dimension. <em>sizes</em> correspondingly lists the number of elements to copy across from each dimension. The <em>strides</em> option lists the stride to step over each dimension in the input tensor. Stride must be zero or positive, and defaults to zero. None of the slice layer arguments are trainable.</dd>
+
+    <dt>split(splits=<em>value</em>, axis=<em>name</em>)</dt><dd>Splits the input tensor into a number of sub tensors along the given axis. <em>splits</em> is either a positive integer or a list thereof. In the former case, it must evenly divide the dimension size of the input tensor along the specified axis. If it is a list, each element specifies the size of the corresponding output tensor along the axis. The sum of sizes must equal to the dimension size of input along the axis. The <em>axis</em> option names the dimension along which to split, defaulting to the first feature dimension. None of the slice layer arguments are trainable.</dd>
+
+    <dt>transpose(permutation=<em>[name, name, ...]</em>)</dt><dd>  Permutes the dimensions of the layer's input tensor according to the given non-trainable <code>permutation</code> list, which lists all of the feature dimensions in the desired order. The compiler will automatically isolate and preserve global dimensions (like batch size and sequence length) in their original positions. For example, transposing a vision feature map from <code>[height, width, channels]</code> to <code>[channels, height, width]</code> automatically preserves the batch dimension at the front, achieving an NHWC to NCHW shift seamlessly.
   <br><br>
   For advanced use cases where a global dimension must be interleaved with feature dimensions—such as swapping the sequence and attention-head dimensions in a Transformer block (<code>[batch, sequence, heads, depth]</code> to <code>[batch, heads, sequence, depth]</code>)—developers may explicitly include the names <code>batch</code> and <code>sequence</code> within the <code>permutation</code> list to override the compiler's automatic placement and gain full structural control of the runtime tensor. In this case the length of the permutation list must equal the full rank of the input tensor.</dd>
-    <dt>resample2D(newShape=<em>{...}</em>, mode=<em>modeName</em>)</dt><dd>Resample the tensor values from the source to the destination dimensions according to the mode and scaling factors as determined by $scale = outputSize / inputSize$. The new shape associates the dimension names with the desired new size for that dimension. The mode name must be either <code>nearest-neighbor</code> or <code>linear</code>, defaulting to the former.
+  
+    <dt>resample2D(newShape=<em>{...}</em>, mode=<em>modeName</em>)</dt><dd>Resample the tensor values from the source to the destination dimensions according to the mode and scaling factors as determined by $scale = outputSize / inputSize$. The new shape associates the dimension names with the desired new size for that dimension. The mode name must be either <code>nearest-neighbor</code> or <code>linear</code>, defaulting to the former. The resample2D layer arguments are non-trainable.
     <p class="example">Here is an example that resizes the image data to 64 by 64 pixels using bilinear interpolation:<br>
     <code>resample2D(newShape={ height: 64, width: 64 }, mode=bilinear)</code></p></dd>
-    <dt>reverse(axes=<em>[name, name, ...]</em>)</dt><dd>Reverses tensor data along named axes.
+    
+    <dt>reverse(axes=<em>[name, name, ...]</em>)</dt><dd>Reverses tensor data along non-trainable named axes.
     <p class="example">Here is an example that flips the image left to right:<br>
     <code>reverse(axes=[width])</code></p>
     </dd>
-    <dt>tile(repetitions=<em>{...}</em>)</dt><dd>Repeat a tensor a given number of times along each named dimension.
+    
+    <dt>tile(repetitions=<em>{...}</em>)</dt><dd>Repeat a tensor a given number of times along each non-trainable named dimension.
     <p class="example">Here is an example that repeats the image twice vertically and three times horizontally:<br>
     <code>tile(repetitions={ height: 2, width: 3 })</code></p></dd>
-    <dt>triangular(upper=<em>boolean</em>, diagonal=<em>integer</em>)</dt><dd>Given a 2-D tensor (matrix), return a 2-D tensor containing either the upper or lower triangular part of the input tensor. The <code>upper</code> property defaults to <code>true</code> and indicates whether to output the upper or the lower part of the input matrix. The <code>diagonal</code> property defaults to <code>0</code> and specifies an offset relative to the main diagonal of the matrix. A value of <code>0</code> means only elements bounded by the main diagonal itself are affected; a positive integer shifts the boundary up and to the right, while a negative integer shifts it down and to the left. Note that the operation applies to the last two feature dimensions. If these are not the final two dimensions in the run-time tensor layout, transpose operations will be automatically injected before and after the WebNN <code>triangular</code> operation. If the input tensor has greater than 2 dimensions it is treated as a batch of matrices and the result has the same shape.</dd>
+
+    <dt>triangular(upper=<em>boolean</em>, diagonal=<em>integer</em>)</dt><dd>Given a 2-D tensor (matrix), return a 2-D tensor containing either the upper or lower triangular part of the input tensor. The <code>upper</code> property defaults to <code>true</code> and indicates whether to output the upper or the lower part of the input matrix. The <code>diagonal</code> property defaults to <code>0</code> and specifies an offset relative to the main diagonal of the matrix. A value of <code>0</code> means only elements bounded by the main diagonal itself are affected; a positive integer shifts the boundary up and to the right, while a negative integer shifts it down and to the left. Note that the operation applies to the last two feature dimensions. If these are not the final two dimensions in the run-time tensor layout, transpose operations will be automatically injected before and after the WebNN <code>triangular</code> operation. If the input tensor has greater than 2 dimensions it is treated as a batch of matrices and the result has the same shape. None of the triangular layer arguments are trainable.</dd>
     </dl>
     </section>
 
@@ -753,7 +762,7 @@ gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</
 
     <section>
         <h4>Mathematics</h4>
-        <p>The following are element-wise operations with two operands, where the first is the layer's input and the second is given as a layer argument (<code>value</code>).</p>
+        <p>The following are element-wise operations with two operands, where the first is the layer's input and the second trainable parameter is given as a layer argument (<code>value</code>).</p>
         
         <dl>
         <dt>add(value)</dt><dd>The output is computed by adding the given value to the layer's input. <em>value</em> is a numeric literal or list thereof, or a name for a layer, input or constant. It will be broadcast as needed to match the layer's input.</dd>
@@ -796,7 +805,7 @@ gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</
 
     <section>
         <h4>Logical</h4>
-        <p>Logical operators generate a tensor with the data type <code>uint8</code> with a non-zero value (usually 1) for true and zero for false. For operators with more than one operand, the operands are broadcast as needed. The shape of the output tensor is the same as the shape of the broadcasted input.</p>
+        <p>Logical operators generate a tensor with the data type <code>uint8</code> with a non-zero value (usually 1) for true and zero for false. For operators with more than one operand, the operands are broadcast as needed. The shape of the output tensor is the same as the shape of the broadcasted input. The <em>value</em> argument is non-trainable.</p>
         <dl>
         <dt>equal(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the corresponding elements are equal, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
         <dt>notEqual(<em>value</em>)</dt><dd>Compares two tensors element-wise and returns a boolean tensor of the same shape, where each position is <code>1</code> (true) if the corresponding elements are not equal, and <code>0</code> (false) otherwise. Supports implicit broadcasting if the shapes differ.</dd>
@@ -822,7 +831,7 @@ gather(shape={ sequence: targetLayer.dimension('sequence') }, axis='sequence')</
         <p>The <em>matmul</em> operator is used for fully connected dense layers in conjunction and the <em>add</em> operator: $y = W\cdot x + b$. In transformers, <em>matmul</em> is the core of the attention mechanism, computing the similarity of query and key matrices to produce attention scores. It also plays a frequent role in calculating gradients as part of machine learning.</p>
         <dl>
         <dt>matmul(<em>value</em>)</dt><dd>Computes the matrix multiplication of the primary tensor (the layer's input) and the <code>value</code> tensor, as specified by the name of a trainable parameter, an input constant or another layer. The operation is applied strictly to the trailing two feature dimensions of both inputs (interpreting them as rows and columns of a matrix). If either tensor has a rank greater than 2, the leading dimensions (such as batch sizes or attention heads) are treated as batch dimensions and are automatically aligned and broadcasted by the compiler to match. The inner dimensions of the two matrices must match at run-time to satisfy standard linear algebra rules. If the targeted matrix dimensions are not at the trailing end of the resolved runtime layouts, the compiler will automatically inject transpose operations to ensure a safe WebNN compilation.</dd>
-        <dt>gemm(<em>B</em>, <em>C</em>, alpha=<em>number</em>, beta=<em>number</em>, aTranspose=<em>boolean</em>, bTranspose=<em>boolean</em>)</dt><dd>Computes the General Matrix Multiplication (GEMM) expression $\alpha A B + \beta C$, combining a scaled matrix multiplication with a scaled bias tensor addition. The primary tensor (the layer's input) acts as matrix $A$, parameter <code>B</code> specifies matrix $B$, and an optional parameter <code>C</code> specifies the bias tensor $C$. The scalar multipliers <code>alpha</code> and <code>beta</code> both default to <code>1.0</code>. The boolean flags <code>aTranspose</code> and <code>bTranspose</code> default to <code>false</code>; setting either to <code>true</code> instructs the WebNN backend to implicitly transpose the final two dimensions of the associated matrix ($A$ or $B$) prior to multiplication, which is highly optimized at the hardware level. Like <code>matmul</code>, this operation applies to the trailing two feature dimensions of the tensors, and any leading dimensions are automatically managed and broadcasted as batch matrices.</dd>
+        <dt>gemm(<em>B</em>, <em>C</em>, alpha=<em>number</em>, beta=<em>number</em>, aTranspose=<em>boolean</em>, bTranspose=<em>boolean</em>)</dt><dd>Computes the General Matrix Multiplication (GEMM) expression $\alpha A B + \beta C$, combining a scaled matrix multiplication with a scaled bias tensor addition. The primary tensor (the layer's input) acts as matrix $A$, parameter <code>B</code> specifies matrix $B$, and an optional parameter <code>C</code> specifies the bias tensor $C$. The scalar multipliers <code>alpha</code> and <code>beta</code> both default to <code>1.0</code>. The boolean flags <code>aTranspose</code> and <code>bTranspose</code> default to <code>false</code>; setting either to <code>true</code> instructs the WebNN backend to implicitly transpose the final two dimensions of the associated matrix ($A$ or $B$) prior to multiplication, which is highly optimized at the hardware level. Like <code>matmul</code>, this operation applies to the trailing two feature dimensions of the tensors, and any leading dimensions are automatically managed and broadcasted as batch matrices. Tensors <code>B</code> and <code>C</code> are trainable, <code>alpha</code>, <code>beta</code> and the transpose flags are not trainable.</dd>
         </dl>
     </section>
 
@@ -879,29 +888,146 @@ This operates similarly to average pooling but gives a much higher mathematical 
         <dt>linear(alpha=<em>number</em>, beta=<em>number</em>)</dt><dd>Calculates a linear function $y = \alpha \cdot x + \beta$ on the input tensor.</dd>
         <dt>elu(alpha=<em>number</em>)</dt><dd>Computes the Exponential Linear Unit (ELU) activation function element-wise on the input tensor.  It passes positive values through completely unchanged, while negative values are exponentially scaled according to the formula $y = \alpha(e^x - 1)$.  The <code>alpha</code> parameter defaults to <code>1.0</code> and governs the structural saturation value for negative inputs, helping push mean activations closer to zero for improved gradient flow.</dd>
         <dt>gelu()</dt><dd>Computes the Gaussian Error Linear Unit (GELU) activation function element-wise on the input tensor. 
-  It weights input values by their value under a cumulative Gaussian distribution, multiplying the input by the probability that a random variable is less than or equal to that input. This non-linear blending provides a smooth, probabilistic threshold heavily utilized in transformer architectures.</dd>
+  It weights input values by their value under a cumulative Gaussian distribution, multiplying the input by the probability that a random variable is less than or equal to that input. This non-linear blending provides a smooth, probabilistic threshold heavily utilized in transformer architectures between the heavy attention blocks and dense layers.</dd>
         <dt>leakyRelu(alpha=<em>number</em>)</dt><dd>Computes the Leaky Rectified Linear Unit (Leaky ReLU) activation function element-wise on the input tensor. It passes positive values through completely unchanged, while assigning a small, constant negative slope to values below zero according to the formula $y = \max(x, \alpha x)$. The <code>alpha</code> parameter defaults to <code>0.01</code> and prevents "dying neurons" by ensuring a continuous, non-zero gradient across the entire negative spectrum.</dd>
-        <dt>prelu(alpha=<em>name</em>)</dt><dd>Computes the Parametric Rectified Linear Unit (PReLU) activation function element-wise on the input tensor. The <code>alpha</code> parameter serves as the negative-side scaling factor. Unlike other activation functions where this factor is a static scalar, <code>prelu</code> expects a parameter weight tensor whose values are optimized during deep learning training. The DAG compiler utilizes type and shape inference on the <code>alpha</code> argument to automatically validate its structure at build time. If the inferred shape of the <code>alpha</code> tensor differs from the input tensor, the compiler handles the necessary layout alignment and implicitly broadcasts the weights across matching named feature dimensions (such as channel-wise scaling).</dd>
-        <dt>relu()</dt><dd>Computes the Rectified Linear Unit (ReLU) activation function element-wise on the input tensor. 
-  It applies a strict thresholding operation that clamps all negative values directly to zero while passing positive values through entirely unmodified, satisfying the linear expression $y = \max(0, x)$.</dd>
-        <dt>hardSwish</dt><dd></dd>
-        <dt>sigmoid</dt><dd></dd>
-        <dt>softmax</dt><dd></dd>
-        <dt>softplus</dt><dd></dd>
-        <dt>softsign</dt><dd></dd>
-        <dt>tanh</dt><dd></dd>
+        <dt>prelu(alpha)</dt><dd>Computes the Parametric Rectified Linear Unit (PReLU) activation function element-wise on the input tensor: ‭if $x \ge 0$ then $y = x$ otherwise $y = \alpha \cdot x$. The <code>alpha</code> parameter serves as the negative-side scaling factor. Unlike other activation functions where this factor is a static scalar, <code>prelu</code> expects a parameter weight tensor whose values are optimized during deep learning training. The DAG compiler utilizes type and shape inference on the <code>alpha</code> argument to automatically validate its structure at build time. If the inferred shape of the <code>alpha</code> tensor differs from the input tensor, the compiler handles the necessary layout alignment and implicitly broadcasts the weights across matching named feature dimensions (such as channel-wise scaling).</dd>
+        <dt>relu()</dt><dd>Computes the Rectified Linear Unit (ReLU) activation function $y = max(0, x)$ element-wise on the input tensor. It applies a strict thresholding operation that clamps all negative values directly to zero while passing positive values through entirely unmodified, satisfying the linear expression $y = \max(0, x)$.</dd>
+        <dt>hardSwish()</dt><dd>Computes the nonlinear function $y = x * max(0, min(6, (x + 3))) / 6$ on the input tensor, element-wise. It is better suited to mobile devices than the <em>swish</em> operator and is more effective than <em>relu</em> thanks to a a soft, curved dip below the zero-line for small negative values. It is used for image processing and can be used with reduced precision, e.g. <code>int8</code>.</dd>
+        <dt>sigmoid()</dt><dd>Computes the non-linear function $y = 1/(1 + e^{-x})$ on the input tensor. It takes any real-numbered value from negative infinity to positive infinity and squashes it into a tight, strict range between 0.0 and 1.0. It should be used at the end of network when you want a binary (yes/no) classification, but risks vanishing gradients if used in the midadle layers of the network./dd>
+        <dt>softmax()</dt><dd>Computes ‭$y(x_i) = {e^{x_i}}/(\sum_{j} e^{x_j})$ over the input tensor, mapping a list of raw, unconstrained numerical scores (called "logits") from a layer and converts them into a probability distribution that adds up to exactly ‭$1.0$‬ (‭$100\%$‬‭‬). It is used to compute probability distributions over multiple distinct categories.</dd>
+        <dt>softplus()</dt><dd>Computes ‭$y(x) = \ln(1 + e^x)$ over the input tensor. It ensures that values flowing through a neural network stay strictly positive, without ever dropping to zero or going negative. It remains smoothly differentiable, unlike <em>relu</em>. These properties make it useful for models that predict statistical variance or simulate smooth physical systems.</dd>
+        <dt>softsign()</dt><dd>Computes ‭$y = x / (1 + |x|)$‬‭‬‭‬‭‬‭‬, squashing values into a bounded range between -1.0 and 1.0. It provides a gentler and computationally cheaper version of the <em>tanh</em> function. As such it is useful for edge computing and stability tracking. It also provides a differentiable alternative to the <em>sign</em> function with applications in quantization, adversial noise and gradient optimization.</dd>
+        <dt>tanh()</dt><dd>Computes $y = (e^x-e^{-x})/(e^x+e^{-x})$ over the input tensor, squashing values into a bounded range between -1.0 and 1.0. It is used in recurrent neural networks, generative adversial networks (GANs) and bounded action outputs in reinforcement learning, e.g. for the joint angles of a robotic hand where the output must be confined to physical limits. However, it risks vanishing gradients when inputs move away from zero. That can be addressed by switching to activation functions like <em>gelu</em> and <em>relu</em>.</dd>
     </section>
 
     <section>
         <h4>Normalization</h4>
+        <p>Normalization speeds training by reducing the likelihood of vanishing or exploding gradients. It works by shifting and scaling input values to have a similar range, based upon their <em>mean</em> and <em>variance</em>. The  <em>epsilon</em> option is a very small number (default = 1E-5) that is used to avoid dividing by zero. For each operator, you can include trainable <em>scale</em> and <em>bias</em> parameters that allow the model to learn scaling and shifting normalized tensors according to the needs of the model.</p>
+        <dl>
+        <dt>batchNormalization(axis=<em>name</em>, epsilon=<em>number</em>)</dt>
+        <dt>batchNormalization(scale, bias, axis=<em>name</em>, epsilon=<em>number</em>)</dt>
+        <dt>batchNormalization(scale, bias, mean=<em>tensor</em>, variance=<em>tensor</em>, axis=<em>name</em>, epsilon=<em>number</em>)</dt>
+        <dd>Batch normalization applies across all batches. If not provided as operands, <em>mean</em> and <em>variance</em> will be computed on the fly across all samples in the batch dimension using <code>reduceMean</code>, <code>pow</code> and <code>sub</code> operations automatically injected into the intermediate DAG. The <em>axis</em> option names the features dimension as appropriate to the kind of data, e.g. color channels, audio frequencies or text embeddings. Note that <em>mean</em> and <em>variance</em> are <em>not</em> trainable!</dd>
+        <dt>instanceNormalization(epsilon=<em>number</em>)</dt>
+        <dt>instanceNormalization(scale, bias, epsilon=<em>number</em>)</dt>
+        <dd>This normalizes the data inside each individual sample (instance) completely independently, without looking at any other samples in the batch. It is calculated by taking a single channel of a single image (or sequence) and shifting/scaling its values based only on the pixels in that specific frame. This computes <em>mean</em> and <em>variance</em> on the fly in a similar way to batchNormalization. While batchNormalization collapses the batch dimension, instanceNormalization explicitly keeps the batch dimension separated and collapses only the spatial/temporal coordinates.</dd>
+        <dt>layerNormalization(axes=<em>[name, name, ...]</em>, epsilon=<em>number</em>)</dt>
+        <dt>layerNormalization(scale, bias, axes=<em>[name, name, ...]</em>, epsilon=<em>number</em>)</dt>
+        <dd>This computes <em>mean</em> and <em>variance</em> on the fly across all the input features of each individual sample in the batch. As such, the output for a sample is exactly the same whether your batch size is 1 or 10,000. This makes it a good choice for variable length sequences like text sentences. The axes option takes a list of dimension names to specify exactly which properties inside a single sample should be grouped together to calculate the mean and variance. For an image, you might, for instance, want to normalize across all pixels and colors, using <code>axes=[height, width, channels]</code>.</dd>
+        </dl>
+        
+        <p class="issue">If batch normalization is needed for inference, there is insufficient data to compute accurate values for <em>mean</em> and <em>variance</em>. A work around is to use the values from training, averaged across all batches. WebNNM allows you to provide these precomputed tensors, but doesn't provide automatic support for computing them during training, so you will need to extend the training model to compute rolling averages.</p>
     </section>
 
     <section>
         <h4>Reduction</h4>
+        <p>The <code>argMin</code> and <code>argMax</code> operators allow you to pick out minimum and maximum values along a designated axis.</p>
+        
+        <dl>
+        <dt>argMin(axis=<em>name</em>, keepDimensions=<em>boolean</em>, outputDataType=<em>string</em>)</dt><dd>Return the index location of the minimum value of all the input values along the required named axis. In case of ties, the identity of the return value is implementation dependent. Optional <code>keepDimensions</code> if true, retains reduced dimensions with size 1, defaulting to false.  Optional <code>outputDataType</code> sets the output data type, defaulting to <code>int32</code>.</dd>
+        <dt>argMax(axis=<em>name</em>)</dt><dd>Return the index location of the maximum value of all the input values along the required named axis. In case of ties, the identity of the return value is implementation dependent. Optional <code>keepDimensions</code> if true, retains reduced dimensions with size 1, defaulting to false.  Optional <code>outputDataType</code> sets the output data type, defaulting to <code>int32</code>.</dd>
+        </dl>
+        
+        <p>The following operators reduce the input tensor along all dimensions, or along the axes specified with the <code>axes</code> list. For each specified axis, the dimension with that index is reduced, i.e. the resulting tensor will not contain it, unless keepDimensions is specified. The values of the resulting tensor are calculated using the specified reduction function that applies over all the input values across the reduced dimensions.</p>
+        
+        <dl>
+        <dt>reduce1(axes=<em>list</em>)</dt><dd>computes the L1  norm, the sum of the absolute value of the input values.</dd>
+        <dt>reduce2(axes=<em>list</em>)</dt><dd>computes the L2  norm, the square root of the sum of the square of the input values.</dd>
+        <dt>reduceLogSum(axes=<em>list</em>)</dt><dd>computes the log value of the sum of the input values.</dd>
+        <dt>reduceLogSumExp(axes=<em>list</em>)</dt><dd>computes the log value of the sum of the exponent of the input values.</dd>
+        <dt>reduceMax(axes=<em>list</em>)</dt><dd>computes the maximum value of the input values.</dd>
+        <dt>reduceMean(axes=<em>list</em>)</dt><dd>computes the average value of the input values.</dd>
+        <dt>reduceMin(axes=<em>list</em>)</dt><dd>computes the minimum value of the input values.</dd>
+        <dt>reduceProduct(axes=<em>list</em>)</dt><dd>computes the product of the input values.</dd>
+        <dt>reduceSum(axes=<em>list</em>)</dt><dd>computes he sum of the input values.</dd>
+        <dt>reduceSumSquare(axes=<em>list</em>)</dt><dd>computes the sum of the square of the input values.</dd>
+        </dl>
+        
+        <p>The <code>cumulativeSum</code> operator computes a running total along a specified tensor axis, transforming sequential deltas into an accelerated, parallelized history of the data's progression.</p>
+        <dl>
+        <dt>cumulativeSum(axis=<em>name</em>, exclusive=<em>boolean</em>, reversed=<em>boolean</em>)</dt><dd>computes the accumulated sum of a series of values along the given axis, either including or excluding the current value. <code>exclusive</code> determines whether to include or exclude the current value in the output, meaning inclusive prefix sum or exclusive prefix sum. Given input [1,2,3,4], inclusive summation would yield an output of [1,3,6,10] whereas exclusive would yield [0,1,3,6]. The default is inclusive. <code>reversed</code> determines whether to reverse the summation direction along the active axis to instead start from the high coordinate to low coordinate. Given input [1,2,3,4], inclusive forward summation would yield an output of [1,3,6,10] whereas inclusive backward summation would yield [10,9,7,4]. The default is forward.</dd>
+        </dl>
     </section>
-
+    
     <section>
-        <h4>Recurrent Neural Networks</h4>
+        <h2>Recurrent Neural Networks</h2>
+        <p>
+            Recurrent layers process sequential data by maintaining an internal state across time steps. The operators below define Gated Recurrent Unit (GRU) and Long Short-Term Memory (LSTM) operations. The layout is only needed when using pre-trained models with a non-default ordering of the dimensions for the weight and bias vectors for the internal gates.
+        </p>
+        
+        <dl>
+            <dt id="gruCell">
+                <strong>gruCell</strong>(weight, recurrentWeight, hiddenState=<em>tensor</em>, hiddenSize=<em>integer</em>, bias=<em>tensor</em>, recurrentBias=<em>tensor</em>, resetAfter=<em>boolean</em>, layout=<em>list</em>, activations=<em>list</em>)
+            </dt>
+            <dd>
+                Computes a single-step Gated Recurrent Unit (GRU) cell over an input sequence. 
+                <ul>
+                    <li><code>weight</code> and <code>recurrentWeight</code>: Trainable parameters representing the input and recurrent transformation tensors.</li>
+                    <li><code>bias</code> and <code>recurrentBias</code> are optional trainable parameters, defaulting to zero tensors.</li>
+                    <li><code>hiddenState</code> is the optional, non-trainable, input hidden state tensor of shape [batchSize, hiddenSize], defaulting to a zero tensor.</li>
+                    <li><code>hiddenSize</code> is the size of the second dimension of the output tensor shape. It indicates the number of features in the hidden state.</li>
+                    <li><code>resetAfter</code> if true, applies the reset gate linear transformation after multiplying by the recurrent weights. Default is true.</li>
+                    <li><code>layout</code> is a three element list defining the ordering of the dimensions for the weight and bias vectors for the internal gates, defaulting to <code>[update, reset, gate]</code>.</li>
+                    <li><code>activations</code> is a list of two activation functions where the first is used for the update and reset gate, and the second used for the new gate. When not specified, defaults to the <code>[sigmoid, tanh]</code>. The permitted functions are <em>relu</em>, <em>sigmoid</em> and <em>tanh</em>.</li>
+                </ul>
+            </dd>
+
+            <dt id="gru">
+                <strong>gru</strong>(weight, recurrentWeight, steps=<em>integer</em>, hiddenSize=<em>integer</em>, bias=<em>tensor</em>, recurrentBias=<em>tensor</em>, initialHiddenState=<em>tensor</em>, resetAfter=<em>boolean</em>, returnSequence=<em>boolean</em>, direction=<em>string</em>, layout=<em>list</em>, activations=<em>list</em>)
+            </dt>
+            <dd>
+                Computes a multi-step Gated Recurrent Unit (GRU) loop over a full input sequence.
+                <ul>
+                    <li><code>weight</code> and <code>recurrentWeight</code>: Trainable parameters representing the input and recurrent transformation tensors.</li>
+                    <li><code>bias</code> and <code>recurrentBias</code> are optional trainable parameters, defaulting to zero tensors.</li>
+                    <li><code>steps</code> is the number of time steps in the recurrent network. The value must be greater than 0.</li>
+                    <li><code>hiddenSize</code> is value of the second dimension of the output tensor shape. It indicates the number of features in the hidden state.</li>
+                    <li><code>initialHiddenState</code> is the optional, non-trainable, input hidden state tensor of shape [batchSize, hiddenSize], defaulting to a zero tensor.</li>
+                    <li><code>resetAfter</code> if true, applies the reset gate linear transformation after multiplying by the recurrent weights. Default is true.</li>
+                    <li><code>returnSequence</code> if true, returns the hidden states for all time steps; if false, returns only the final hidden state. Default is false.</li>
+                    <li><code>direction</code> defines the sequence traversal direction. Allowed values: <em>forward</em>, <em>backward</em>, or <em>both</em>. Default is <em>forward</em>. When set to "both", the size of the first dimension of the weight and the bias tensor shapes must be 2, and the input is processed in both directions.</li>
+                    <li><code>layout</code> is a three element list defining the ordering of the dimensions for the weight and bias vectors for the internal gates, defaulting to <code>[update, reset, gate]</code>.</li>
+                    <li><code>activations</code> is a list of two activation functions where the first is used for the update and reset gate, and the second used for the new gate. When not specified, defaults to the <code>[sigmoid, tanh]</code>. The permitted functions are <em>relu</em>, <em>sigmoid</em> and <em>tanh</em>.</li>
+                </ul>
+            </dd>
+
+            <dt id="lstmCell">
+                <strong>lstmCell</strong>(weight, recurrentWeight, hiddenState=<em>tensor</em>, cellState=<em>tensor</em>, hiddenSize=<em>integer</em>, bias=<em>tensor</em>, recurrentBias=<em>tensor</em>, peepholeWeight=<em>tensor</em>, layout=<em>list</em>, activations=<em>list</em>)
+            </dt>
+            <dd>
+                Computes a single-step Long Short-Term Memory (LSTM) cell calculation incorporating input, output, forget, and cell gates.
+                <ul>
+                    <li><code>weight</code> and <code>recurrentWeight</code>: Trainable parameters representing the input and recurrent transformation tensors.</li>
+                    <li><code>bias</code> and <code>recurrentBias</code> are optional trainable parameters, defaulting to zero tensors.</li>
+                    <li><code>hiddenState</code> is the optiona, non-trainable, input hidden state tensor of shape [batchSize, hiddenSize], defaulting to a zero tensor.</li>
+                    <li><code>cellState</code> is the optional, non-trainable, input cell state tensor of shape [batchSize, hiddenSize], defaulting to a zero tensor.</li>
+                    <li><code>hiddenSize</code> is value of the second dimension of the output tensor shape. It indicates the number of features in the hidden state.</li>
+                    <li><code>peepholeWeight</code>: is an optional trainable tensor providing connections from the cell state directly to the internal gates.</li>
+                    <li><code>layout</code> is a four element list defining the ordering of the dimensions for the weight and bias vectors for the internal gates, defaulting to <code>[input, output, forget, cell]</code>.</li>
+                    <li><code>activations</code> is a list of three activation functions where the first used for the input, forget, and output gate, the second one is used for the cell gate, and the last used for filtering the output cell state before combining it with the result of the output gate to form the output hidden state. When not specified, defaults to <code>[sigmoid, tanh, tanh]</code>. The permitted functions are <em>relu</em>, <em>sigmoid</em> and <em>tanh</em>.</li>
+                </ul>
+            </dd>
+
+            <dt id="lstm">
+                <strong>lstm</strong>(weight, recurrentWeight, steps=<em>integer</em>, hiddenSize=<em>integer</em>, bias=<em>tensor</em>, recurrentBias=<em>tensor</em>, peepholeWeight=<em>tensor</em>, initialHiddenState=<em>tensor</em>, initialCellState=<em>tensor</em>, returnSequence=<em>boolean</em>, direction=<em>string</em>, layout=<em>list</em>, activations=<em>list</em>)
+            </dt>
+            <dd>
+                Computes a multi-step Long Short-Term Memory (LSTM) recurrent network layer over an input sequence.
+                <ul>
+                    <li><code>weight</code> and <code>recurrentWeight</code>: Trainable parameters representing the input and recurrent transformation tensors.</li>
+                    <li><code>bias</code> and <code>recurrentBias</code> are optional trainable parameters, defaulting to zero tensors.</li>
+                    <li><code>hiddenSize</code> is value of the second dimension of the output tensor shape. It indicates the number of features in the hidden state.</li>
+                    <li><code>peepholeWeight</code> is an optional trainable tensor providing connections from the cell state directly to the internal gates.</li>
+                    <li><code>initialHiddenState</code> is the optional, non-trainable, initial input hidden state tensor of shape [batchSize, hiddenSize].</li>
+                    <li><code>initialCellState</code> is the optional, non-trainable, initial input cell state tensor of shape [batchSize, hiddenSize].</li>
+                    <li><code>returnSequence</code> if true, returns the full structural history of hidden states across all steps. Default is false.</li>
+                    <li><code>direction</code> defines the sequence traversal direction: <em>forward</em>, <em>backward</em>, or <em>both</em>. Default is <em>forward</em>. When set to "both", the size of the first dimension of the weight and the bias tensor shapes must be 2, and the input is processed in both directions.</li>
+                    <li><code>layout</code>: A four element list defining the ordering of the dimensions for the weight and bias vectors for the internal gates, defaulting to <code>[input, output, forget, cell]</code>.</li>
+                    <li><code>activations</code> is a list of three activation functions where the first is used for the input, forget, and output gate, the second one is used for the cell gate, and the last used for filtering the output cell state before combining it with the result of the output gate to form the output hidden state. When not specified, defaults to <code>[sigmoid, tanh, tanh]</code>. The permitted functions are <em>relu</em>, <em>sigmoid</em> and <em>tanh</em>.</li>
+                </ul>
+            </dd>
+        </dl>
+        <p class="issue">The layer signatures follow those in the WebNN specification, but break the WebNNM convention that options are non-trainable parameters  given that <code>bias</code> and <code>recurrentBias</code> are <strong>trainable options</strong>, while <code>steps</code> and <code>hiddenSize</code> are <strong>required options</strong>. These layers already have too many positional arguments for comfort, so perhaps the convention is worth breaking in such cases.</p>
     </section>
 
     </section>
@@ -923,6 +1049,58 @@ This operates similarly to average pooling but gives a much higher mathematical 
     <section>
       <h3>WebNNM Model Syntax</h3>
       <p>This section defines the grammar for the model syntax.</p>
+      <pre>
+/* High-Level Grammar Structure */
+Grammar   ::= ( ( CONSTANT | BLOCK ) ";" S* )+
+
+CONSTANT  ::= name S+ datatype? S+ SHAPE S+ DATA
+
+SHAPE     ::= ( "[" number ( "," number )* "]" ) 
+            | ( "{" name ":" number ( "," S+ name ":" number )* "}" )
+
+BLOCK     ::= ( name ":name" S+ name ) 
+            | ( name ":input" S+ datatype? S+ SHAPE ) 
+            | ( name ":output" S+ datatype? S+ SHAPE ) 
+            | ( name ":layers" S+ LAYER ( "," S* LAYER )* )
+
+LAYER     ::= name "(" ARGUMENT ( "," S* ARGUMENT )? ")"
+
+ARGUMENT  ::= name 
+            | ( name S* "=" S* VALUE )
+
+VALUE     ::= name 
+            | number 
+            | LIST
+
+LIST      ::= "[" ITEM ( "," S* ITEM )* "]"
+
+ITEM      ::= number 
+            | name 
+            | LIST
+
+DATA      ::= "[" number ( "," S* number )* "]"
+
+datatype  ::= "float32" | "float16" | "uint32" | "int32" | "uint8" | "int8"
+
+/* Core Tokens & Terminals */
+
+/* Matches integers (42), floats (3.14), and exponents (1e-5, 6.02e23) */
+number    ::= [+-]? ( ( digit+ ( "." digit* )? ) | ( "." digit+ ) ) ( [eE] [+-]? digit+ )?
+
+/* General Name: matches identifiers, including hyphens and underscores */
+name            ::= name_start_char name_char*
+
+name_start_char ::= [a-zA-Z_]
+name_char       ::= [a-zA-Z0-9_-]
+digit           ::= [0-9]
+
+/* Whitespace and Comments */
+S               ::= whitespace | comment
+
+whitespace      ::= [#x09#x0A#x0D#x20]+ /* Tab, LF, CR, Space */
+comment         ::= "#" [^#x0A#x0D]* /* '#' followed by anything except newlines */
+      </pre>
+      
     </section>
     <section>
       <h3>Loss Functions</h3>
@@ -1000,6 +1178,8 @@ This operates similarly to average pooling but gives a much higher mathematical 
     <section>
       <h3>WebNNM Snapshot Binary Format</h3>
       <p>This section defines the binary format for models and their parameters.</p>
+      
+      <p><em>(to be added)</em></p>
     </section>
     <section>
       <h3>WebNNM Test Harness</h3>
