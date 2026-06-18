@@ -53,8 +53,7 @@
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
   <style>
     .railroad {
-      margin-top: 1em;
-      margin-bottom: 2em;
+      width: 100%;
     }
     
     pre {
@@ -1104,6 +1103,9 @@ S               ::= whitespace | comment
 whitespace      ::= [#x09#x0A#x0D#x20]+ /* Tab, LF, CR, Space */
 comment         ::= "#" [^#x0A#x0D]* /* '#' followed by anything except newlines */
       </pre>
+      
+      <p>Here is an informative version as a railroad diagram:<br>
+      <img class="railroad" src="webnnm-rr-grammar.png" alt="grammar-diagram"></p>
       
     </section>
     <section>
