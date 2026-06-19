@@ -1054,7 +1054,7 @@ Grammar   ::= ( ( CONSTANT | BLOCK ) ";" S* )+
 
 CONSTANT  ::= name S+ datatype? S+ SHAPE S+ DATA
 
-SHAPE     ::= ( "[" number ( "," number )* "]" ) 
+SHAPE     ::= ( "[" (number ( "," number )*)? "]" ) 
             | ( "{" name ":" number ( "," S+ name ":" number )* "}" )
 
 BLOCK     ::= ( name ":name" S+ name ) 
@@ -1068,7 +1068,8 @@ BLOCK     ::= ( name ":name" S+ name )
 
 LAYER     ::= name "(" ARGUMENT ( "," S* ARGUMENT )? ")"
 
-ARGUMENT  ::= name 
+ARGUMENT  ::= name
+            | number
             | ( name S* "=" S* VALUE )
 
 VALUE     ::= name 
@@ -1104,7 +1105,7 @@ whitespace      ::= [#x09#x0A#x0D#x20]+ /* Tab, LF, CR, Space */
 comment         ::= "#" [^#x0A#x0D]* /* '#' followed by anything except newlines */
       </pre>
       
-      <p>Here is an informative version as a railroad diagram:<br>
+      <p>Here is an informative version as a railroad diagram, where "S" denotes whitespace:<br>
       <img class="railroad" src="webnnm-rr-grammar.png" alt="grammar-diagram"></p>
       
     </section>
