@@ -179,9 +179,9 @@ dense:layers
     <p>Named constants can be declared and referred to from layers. Here is an example of declaring constants named "pi", "foo" and "bar":</P>
     
     <pre class="example nohighlight">
-    pi float32 [] 3.1415926;
-    foo int32 [4] [1, 1, 0, 0];
-    bar {a:2, b:3} [0, 1, 2, 3, 4, 5];
+    pi float32 3.1415926;
+    foo int32 shape=[4] data=[1, 1, 0, 0];
+    bar shape={a:2, b:3} data=[0, 1, 2, 3, 4, 5];
     </pre>
     <p>where <em>pi</em> is defined as a scalar and <em>bar</em> as a rank 2 tensor with layout [a, b]. You have the choice of using curly braces with named dimensions or square brackets for just the dimension sizes.</p>
     
@@ -660,11 +660,11 @@ window.addEventListener("load", async () => {
         
     <li><code>add(1.5)</code> An add layer that adds the number 1.5 to the layer's input, using broadcasting to match the input tensor's shape.</li>
     
-    <li><code>pi float32 [] 3.1415926</code> Declares "pi" as a named float32 scalar constant.</li>
+    <li><code>pi float32 3.1415926</code> Declares "pi" as a named float32 scalar constant.</li>
     
-    <li><code>foo int32 [4] [1, 1, 0, 0]</code> Declares "bar" as the name of a constant int32 tensor with shape [4], and fill it with the listed values.</li>
+    <li><code>foo int32 shape=[4] data=[1, 1, 0, 0]</code> Declares "bar" as the name of a constant int32 tensor with shape [4], and fill it with the listed values.</li>
 
-    <li><code>bar {a:2, b:3} [0, 1, 2, 3, 4, 5]</code> Declares "foo" as the name of constant tensor with shape [2, 3] and layout [a, b]. The tensor is filled from the one dimensional buffer, which must have a length equal to the tensor's size, i.e. the product of the size of the tensor's dimensions, in this example, $size = 2 \times 3 = 6$</li>
+    <li><code>bar shape={a:2, b:3} data=[0, 1, 2, 3, 4, 5]</code> Declares "foo" as the name of constant tensor with shape [2, 3] and layout [a, b]. The tensor is filled from the one dimensional buffer, which must have a length equal to the tensor's size, i.e. the product of the size of the tensor's dimensions, in this example, $size = 2 \times 3 = 6$</li>
     </ul>
     </section>
 
