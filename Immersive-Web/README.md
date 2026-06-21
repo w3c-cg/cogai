@@ -20,7 +20,7 @@ Cognitive AI will be an important enabler for immersive presence in extended rea
 
 **Physics and behavioural modelling**: clients are responsible for applying this to the resources they own, e.g. motion and collision detection.  Behaviour is modelled in terms of intents with complementary symbolic and neural network systems.
 
-**Neural Ordinary Differential Equations**: a class of neural networks that parameterize the derivative (the rate of change) of the system's hidden state. This allows them to generate predictions for arbitrary moments in time, freeing graphics applications from fixed frame rates, and enabling real-time control over robot actuators.
+**Liquid Neural Networks**: a class of neural networks using closed-form approximation for the differential equations governing the synapse, allowing them to generate predictions for arbitrary moments in time, slowing or speeding time as needed, freeing graphics applications from fixed frame rates, and enabling real-time control over robot actuators. 
 
 **Accessibility**: users are free to choose how they interact according to their personal preferences and capabilities, using intent-based APIs exposed by digital twins for avatars, agents, devices and processes.
 
