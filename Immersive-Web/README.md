@@ -16,6 +16,8 @@ Cognitive AI will be an important enabler for immersive presence in extended rea
 
 **Spatial sharding**: each server manages a particular spatial zone to limit scene complexity - clients are seamlessly transferred between servers as the clients move around.
 
+**Gaussian Splats**: traditional 3D graphics is based upon triangles, using GPUs for efficient rendering. Machine learning with neural networks depends on differentiability, but triangles are non differentiable. Gaussian splats are differentiable 3D colour blobs akin to the pointilistic school of impressionist art. Your device's camera see's your face, leaving AI to generate and render the back of your head, your clothes and body posture.
+
 **Physics and behavioural modelling**: clients are responsible for applying this to the resources they own, e.g. motion and collision detection.  Behaviour is modelled in terms of intents with complementary symbolic and neural network systems.
 
 **Accessibility**: users are free to choose how they interact according to their personal preferences and capabilities, using intent-based APIs exposed by digital twins for avatars, agents, devices and processes.
