@@ -46,7 +46,7 @@ Manifold-based binding requires architectures capable of shaping, sustaining, an
 
 **Neural Ordinary Differential Equations (Neural ODEs)**  
 
-•     **What they do:** Instead of defining discrete layer-by-layer transitions ($h_{t+1} = f(h_t)$), Neural ODEs define the *derivative* of the hidden state ($\frac{dh(t)}{dt} = f(h(t), t)$).  
+•     **What they do:** Instead of defining discrete layer-by-layer transitions $h_{t+1} = f(h_t)$ , Neural ODEs define the *derivative* of the hidden state $\frac{dh(t)}{dt} = f(h(t), t)$.  
 
 •     **Role in Binding:** This treats the hidden state as a continuous trajectory moving over a curved geometric manifold, making it highly effective at tracking fluid, context-dependent transitions between structural roles.  
 
@@ -84,7 +84,7 @@ A work around is to use a double-buffered banked tensors. This keeps the data re
 
 •     **The Extension Needed:** Full, bidirectional, zero-copy synchronisation between WebNN graphs and **WebGPU compute shaders**. This would allow a developer to handle the complex, non-linear geometric updates of a neural manifold in a custom WebGPU shader, and seamlessly pass the resulting manifold coordinates back into WebNN for standard layer processing.  
 
-*Would extensions to WebNN for manifolds also be suitable for continual learning and memory based approaches that scale better than transformers? *  
+*Would extensions to WebNN for manifolds also be suitable for continual learning and memory based approaches that scale better than transformers*  
 
 Absolutely. The proposed WebNN extensions for neural manifolds align directly with the structural needs of **continual learning (CL)** and alternative **memory-based architectures** designed to surpass Transformers in scaling efficiency.  
 
@@ -116,7 +116,7 @@ Several architectures are vying to replace Transformers by compressing context i
 
 •     **The Scaling:** linear inference memory scaling.  
 
-•     **The Manifold Connection:** Instead of a $T \times T$ attention matrix, these architectures maintain a constantly updating context matrix ($M_t = M_{t-1} + V_t K_t^T$), which acts as a dynamic memory manifold.  
+•     **The Manifold Connection:** Instead of a $T \times T$ attention matrix, these architectures maintain a constantly updating context matrix $M_t = M_{t-1} + V_t K_t^T$, which acts as a dynamic memory manifold.  
 
 •     **WebNN Fit:** Low-rank operators and efficient matrix updating tools let these networks compress entire chat histories into a compact tensor manifold directly on consumer GPUs.  
 
@@ -191,7 +191,7 @@ To update the long-term memory without pausing active generation, the system nee
 
 When the model completes a step in its Chain of Thought that is deemed worthy of long-term storage, it doesn't immediately recompute the entire long-term manifold. Instead, it uses **Synaptic Tagging**—a concept borrowed from neuroscience.  
 
-•     The new memory is converted into a low-rank outer product ($\Delta W = f \otimes r$).  
+•     The new memory is converted into a low-rank outer product $\Delta W = f \otimes r$.  
 
 •     This tiny, isolated vector matrix is appended to a local "buffer zone" on the edge of the long-term memory manifold.  
 
