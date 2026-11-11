@@ -617,6 +617,10 @@ export class NNModel {
         // Track pending Promise resolvers if the CPU is waiting for a bankIndex.
         const bankIndexResolvers = [null, null];
 
+        // First error raised while processing a batch's results, rethrown
+        // by train() as the callbacks aren't awaited directly
+        let failure = null;
+
         // Pause CPU until requested bankIndex (0 or 1) is ready for input
         function isReadyForInput(bankIndex) {
             if (bankIndexReady[bankIndex]) {
@@ -796,7 +800,11 @@ export class NNModel {
                 // Returns a promise that resolved by bankIndexNowReadyForInput(bankIndex)
                 // Note: this resolves immediately on the first call
                 await isReadyForInput(bankIndex);
-                
+
+                // stop if an earlier batch failed
+                if (failure)
+                    throw failure;
+
                 // Calculate scheduled LR for this specific step
                 const currentStep = (epoch - 1) * batchCount + batchIndex + 1;
                 let currentLR;
@@ -890,14 +898,17 @@ export class NNModel {
                     epochSamples += validCount;
                     setReadyForInput(bankIndex);
                 }).catch((error) => {
+                    failure ??= error;
                     setReadyForInput(bankIndex);
-                    throw error;
                 });
             }
 
             // wait until every batch in this epoch has been executed and
             // its loss read back before summarising the epoch
             await drainBanks();
+
+            if (failure)
+                throw failure;
 
             let totalBatchLoss = 0;
             let current = null; // params read back for this epoch, if any
