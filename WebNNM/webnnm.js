@@ -453,11 +453,16 @@ export class NNModel {
             numberOfSamples += validCount;
         }
         
+        const losses = {}; // blockName -> average loss per sample
+
         for (const name in averageLosses) {
             const loss = averageLosses[name]
             const blockName = name.split(':')[0];
+            losses[blockName] = loss/numberOfSamples;
             log(`  ${blockName}: average loss per sample = ${loss/numberOfSamples}`);
-        }           
+        }
+
+        return losses;
     }
  
     /**
@@ -554,6 +559,7 @@ export class NNModel {
         let numberOfSamples = 0;
         let bestLoss = Infinity;  // validation loss if applicable
         let bestEpoch = 0;
+        let bestParams = null;    // snapshot of params from best epoch
         
         // default hyper parameters
         const defaults = {
@@ -894,12 +900,17 @@ export class NNModel {
             await drainBanks();
 
             let totalBatchLoss = 0;
+            let current = null; // params read back for this epoch, if any
 
             // periodically report progress
             if (epochs < 100 || epoch % 50 === 0 || epoch === 1) {
-                // perform validation pass if applicable
-                if (validationSize > 0)
-                    model.test(dataset.subsetRole.VALIDATION);
+                // perform validation pass on the current params if applicable,
+                // test() builds its inputs from param.buffer
+                if (validationSize > 0) {
+                    current = await readParams();
+                    setParams(current);
+                    await model.test(dataset.subsetRole.VALIDATION);
+                }
 
                 for (const name in averageLosses) {
                     const lossValue = averageLosses[name]
@@ -912,7 +923,7 @@ export class NNModel {
                 epochLoss += (totalBatchLoss * lastValidCount);
 
                 if (epochs >= 100 && epochLoss < bestLoss) {
-                    setParams(await readParams());
+                    bestParams = current ?? await readParams();
                     bestLoss = epochLoss;
                     bestEpoch = epoch;
                     patience = hyperParams.patience;
@@ -922,7 +933,7 @@ export class NNModel {
             if (epoch === epochs) {
                 if (epochLoss < bestLoss) {
                     // read back params after finishing training
-                    setParams(await readParams());
+                    bestParams = current ?? await readParams();
                     bestEpoch = epoch;
                 }
 
@@ -935,6 +946,11 @@ export class NNModel {
         // epoch loop finished
         if (patience <= 0)
             log(`best params from epoch ${bestEpoch}`);
+
+        // leave the model with the params from the best epoch, as
+        // validation may have loaded more recent params
+        if (bestParams)
+            setParams(bestParams);
     }
  
     // convenience function for displaying typed array
