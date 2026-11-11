@@ -392,7 +392,9 @@ export class NNModel {
     // Run WebNN testing graph on dataset passed on start up
     // Batched testing where last batch is usually smaller
     // Allow for models with multiple inputs and outputs
-    async test (subset) {
+    // Returns the average loss per sample for each model output
+    // quiet suppresses logging, e.g. for validation between epochs
+    async test (subset, quiet = false) {
         const model = this;
         const dataset = model.#dataset;
         subset = subset ?? dataset.subsetRole.TESTING;
@@ -419,10 +421,12 @@ export class NNModel {
         const graph = await model.#engine.testingGraph(batchSize);
         const inputs = {}, outputs = {};
         
-        if (testing)
-            log(`\nTesting against ${dataset.name()} dataset: ${testingSampleCount} test samples`);
-        else
-            log(`\nValidation: ${testingSampleCount} samples`);
+        if (!quiet) {
+            if (testing)
+                log(`\nTesting against ${dataset.name()} dataset: ${testingSampleCount} test samples`);
+            else
+                log(`\nValidation: ${testingSampleCount} samples`);
+        }
 
         for (let i = 0; i < batchCount; ++i) {
             const testBatch = dataset.getNextBatch(subset, model);
@@ -433,7 +437,7 @@ export class NNModel {
             
             await webnn.dispatch(graph, inputs, outputs);
             
-            if (testing)
+            if (testing && !quiet)
                 log(`  processed batch ${i+1}, size ${batchSize}, actual ${validCount}`);
 
             // readback the loss for each model output
@@ -453,11 +457,17 @@ export class NNModel {
             numberOfSamples += validCount;
         }
         
+        const losses = {}; // blockName -> average loss per sample
+
         for (const name in averageLosses) {
             const loss = averageLosses[name]
             const blockName = name.split(':')[0];
-            log(`  ${blockName}: average loss per sample = ${loss/numberOfSamples}`);
-        }           
+            losses[blockName] = loss/numberOfSamples;
+            if (!quiet)
+                log(`  ${blockName}: average loss per sample = ${loss/numberOfSamples}`);
+        }
+
+        return losses;
     }
  
     /**
@@ -554,6 +564,8 @@ export class NNModel {
         let numberOfSamples = 0;
         let bestLoss = Infinity;  // validation loss if applicable
         let bestEpoch = 0;
+        let bestParams = null;    // snapshot of params from best epoch
+        let trainedEpochs = 0;    // number of epochs actually run
         
         // default hyper parameters
         const defaults = {
@@ -611,6 +623,10 @@ export class NNModel {
         // Track pending Promise resolvers if the CPU is waiting for a bankIndex.
         const bankIndexResolvers = [null, null];
 
+        // First error raised while processing a batch's results, rethrown
+        // by train() as the callbacks aren't awaited directly
+        let failure = null;
+
         // Pause CPU until requested bankIndex (0 or 1) is ready for input
         function isReadyForInput(bankIndex) {
             if (bankIndexReady[bankIndex]) {
@@ -641,7 +657,15 @@ export class NNModel {
                 bankIndexReady[bankIndex] = true;
             }
         }
-                
+
+        // Wait until every dispatched batch has been executed and its
+        // callback has finished, then mark both banks as free again
+        async function drainBanks() {
+            await isReadyForInput(0);
+            await isReadyForInput(1);
+            bankIndexReady[0] = bankIndexReady[1] = true;
+        }
+
         // Pass the dataset and the number of seeds to test.
         if (hyperParams.seeds > 0) {
             log(`\nScouting for best initialization from ${hyperParams.seeds} seeds`);
@@ -663,15 +687,32 @@ export class NNModel {
         log(`\nTraining against ${dataset.name()} dataset: ${trainingSampleCount} training samples for ${epochs} epochs`);
         log(`showing average loss per sample:`);
 
-        let bankIndex = 0; // used to switch bankIndexs on odd/even batches
         inputBanks[0] = {}; inputBanks[1] = {};
         outputBanks[0] = {}; outputBanks[1] = {};
-        
+
         function prefix (name) {
             const parts = name.split(':');
             return parts[0];
         }
-        
+
+        // read the current params back from the output bank of the
+        // epoch's last batch, only valid once the banks are drained
+        async function readParams () {
+            const bank = outputBanks[(batchCount - 1) & 1];
+            const snapshot = {};
+            for (const key in model.dag.params) {
+                // wrap in a typed array, as readTensor returns an ArrayBuffer
+                const DataType = NNModel.ML_TYPE_MAP(model.dag.params[key].dataType);
+                snapshot[key] = new DataType(await webnn.readTensor(bank[key]));
+            }
+            return snapshot;
+        }
+
+        function setParams (snapshot) {
+            for (const key in snapshot)
+                model.dag.params[key].buffer = snapshot[key];
+        }
+
         async function assignTensors (name, descriptor) {
             inputBanks[0][name] = await webnn.createTensor(descriptor);
             outputBanks[0][name] = await webnn.createTensor(descriptor);
@@ -746,22 +787,27 @@ export class NNModel {
         for (let epoch = 1; epoch <= epochs && --patience > 0; ++ epoch) {
             let averageLosses = {};
             let epochSamples = 0;
-            let epochLoss = 0;
 
             // iterate through batches for this epoch
             for (let batchIndex = 0; batchIndex < batchCount; ++batchIndex) {
-                bankIndex = batchIndex & 1;
+                // declared per batch so that this batch's callback
+                // releases the bank it used, not the current one
+                const bankIndex = batchIndex & 1;
 
                 const batch = dataset.getNextBatch(subset, model);// last batch has zeros for missing samples
                 const validCount = batch.validCount; // actual number of samples
-                
+
                 const inputs = inputBanks[bankIndex];
                 const outputs = outputBanks[bankIndex];
                 
                 // Returns a promise that resolved by bankIndexNowReadyForInput(bankIndex)
                 // Note: this resolves immediately on the first call
                 await isReadyForInput(bankIndex);
-                
+
+                // stop if an earlier batch failed
+                if (failure)
+                    throw failure;
+
                 // Calculate scheduled LR for this specific step
                 const currentStep = (epoch - 1) * batchCount + batchIndex + 1;
                 let currentLR;
@@ -853,68 +899,71 @@ export class NNModel {
                     }
             
                     epochSamples += validCount;
-                
-                    // only on last batch in each epoch
-                    if (batchIndex === batchCount - 1) {
-                        let totalBatchLoss = 0;
-                    
-                        // periodically report progress
-                        if (epochs < 100 || epoch % 50 === 0 || epoch === 1) {
-                            // perform validation pass if applicable
-                            if (validationSize > 0)
-                                model.test(dataset.subsetRole.VALIDATION);
-            
-                            for (const name in averageLosses) {
-                                const lossValue = averageLosses[name]
-                                const blockName = name.split(':')[0];
-                                totalBatchLoss += lossValue * hyperParams.lossWeights[blockName];
-                                if (patience > 0)
-                                    log(`  Epoch ${epoch}, ${blockName}:loss = ${lossValue/epochSamples}`);
-                            }
-                            
-                            epochLoss += (totalBatchLoss * validCount);
-                            
-                            if (epochs >= 100 && epochLoss < bestLoss) {
-                                // read back params
-                                for (const key in model.dag.params) {
-                                    const param = model.dag.params[key];
-                                    const tensor = outputBanks[bankIndex][key]
-                                    param.buffer = await webnn.readTensor(tensor);
-                                }
-                                bestLoss = epochLoss;
-                                bestEpoch = epoch;
-                                patience = hyperParams.patience;
-                            }
-                        }
-                    
-                        if (epoch === epochs) {
-                            if (epochLoss < bestLoss) {
-                                 // read back params after finishing training
-                                for (const key in model.dag.params) {
-                                    const param = model.dag.params[key];
-                                    const tensor = outputBanks[bankIndex][key]
-                                    param.buffer = await webnn.readTensor(tensor);
-                                }
-                                bestEpoch = epoch;
-                            }
-        
-                            log(`best params from epoch ${bestEpoch}`);
-                        }
-                    }
-                    
                     setReadyForInput(bankIndex);
                 }).catch((error) => {
+                    failure ??= error;
                     setReadyForInput(bankIndex);
-                    throw error;
                 });
-            } 
-                    
-            dataset.prepareBatches(subset); // prepare for next epoch           
+            }
+
+            // wait until every batch in this epoch has been executed and
+            // its loss read back before summarising the epoch
+            await drainBanks();
+
+            if (failure)
+                throw failure;
+
+            trainedEpochs = epoch;
+            const report = epochs < 100 || epoch % 50 === 0 || epoch === 1;
+
+            // average training loss per sample for each model output
+            const trainingLosses = {};
+            for (const name in averageLosses)
+                trainingLosses[name.split(':')[0]] = averageLosses[name] / epochSamples;
+
+            // periodically report progress
+            if (report) {
+                for (const blockName in trainingLosses)
+                    log(`  Epoch ${epoch}, ${blockName}:loss = ${trainingLosses[blockName]}`);
+            }
+
+            // evaluate the current params on the validation subset if
+            // applicable, test() builds its inputs from param.buffer
+            let current = null; // params read back for this epoch, if any
+            let validationLosses = null;
+
+            if (validationSize > 0) {
+                current = await readParams();
+                setParams(current);
+                validationLosses = await model.test(dataset.subsetRole.VALIDATION, !report);
+            }
+
+            // select the best epoch on every epoch, using the validation loss
+            // if available, else the training loss, weighted across outputs
+            const losses = validationLosses ?? trainingLosses;
+            let epochLoss = 0;
+            for (const blockName in losses)
+                epochLoss += losses[blockName] * hyperParams.lossWeights[blockName];
+
+            if (epochLoss < bestLoss) {
+                bestParams = current ?? await readParams();
+                bestLoss = epochLoss;
+                bestEpoch = epoch;
+                patience = hyperParams.patience;
+            }
+
+            dataset.prepareBatches(subset); // prepare for next epoch
         }
-        
-        // epoch loop finished
-        if (patience <= 0)
-            log(`best params from epoch ${bestEpoch}`);
+
+        // leave the model with the params from the best epoch, as validation
+        // may have loaded more recent params, or with the latest params if
+        // no epoch had a finite loss
+        if (bestParams)
+            setParams(bestParams);
+        else if (trainedEpochs > 0)
+            setParams(await readParams());
+
+        log(`best params from epoch ${bestEpoch}`);
     }
  
     // convenience function for displaying typed array
