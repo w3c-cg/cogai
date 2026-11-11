@@ -1367,11 +1367,11 @@ class NNEngine {
                 if (typeof value !== 'number' || value <= 0)
                     throw new Error(`Learning rate multiplier '${value}' for parameter ${param.name} is not a positive number!`);
                     
-                if (this.constantCache.has(value)) {
-                    lrm = this.constantCache.get(value);
+                if (constantCache.has(value)) {
+                    lrm = constantCache.get(value);
                 } else {
                     lrm = builder.constant({dataType: 'float32', shape: []}, new Float32Array([param.lrm]));
-                    this.constantCache.set(value, lrm);
+                    constantCache.set(value, lrm);
                 }
             } else if (frozen) {
                 // compute path ratio for this param
