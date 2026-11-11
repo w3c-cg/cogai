@@ -2872,10 +2872,10 @@ class ParamNode extends NNNode {
         const buffer = this.createBuffer(size);
         const bound = limit * stdDev;
 
-        for (let i = 0; i < size; i += 2) {
+        for (let i = 0; i < size; i++) {
             let x;
             while (true) {
-                const u1 = rng();
+                const u1 = 1 - rng(); // in (0, 1], avoids log(0)
                 const u2 = rng();
                 const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
                 x = z0 * stdDev + mean;
