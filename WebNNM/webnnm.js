@@ -1100,14 +1100,16 @@ class NNEngine {
         this.#graphCache = {}; // cache of prebuilt graphs
     }
     
-    cachedGraph (mode, batchSize) {
-        const key = `${mode}-${batchSize}`;
+    // variant distinguishes graphs with the same mode and batch size,
+    // e.g. training graphs built with different optimizer settings
+    cachedGraph (mode, batchSize, variant = '') {
+        const key = `${mode}-${batchSize}${variant}`;
         return this.#graphCache[key];
     }
-    
-    cacheGraph (graph, mode, batchSize) {
+
+    cacheGraph (graph, mode, batchSize, variant = '') {
         log(`${mode} graph compiled for batch size ${batchSize}`)
-        const key = `${mode}-${batchSize}`;
+        const key = `${mode}-${batchSize}${variant}`;
         return this.#graphCache[key] = graph;
     }
     
@@ -1295,17 +1297,24 @@ class NNEngine {
     }
     
     async trainingGraph (batchSize, hyperParams) {
-        let graph = this.cachedGraph('training', batchSize);
+        const algorithm = (hyperParams.optimizer ?? 'rlion').toLowerCase();
+
+        // the optimizer and its settings are built into the graph as
+        // constants, so a graph can only be reused if they all match
+        const { beta1, beta2, alpha, mu, momentumFactor, weightDecay, freeze } = hyperParams;
+        const variant = JSON.stringify({ algorithm, beta1, beta2, alpha, mu,
+                                         momentumFactor, weightDecay, freeze });
+
+        let graph = this.cachedGraph('training', batchSize, variant);
         if (graph) return graph;
-        
+
         const webnn = this.model.webnn(0);
         const builder = new MLGraphBuilder(webnn);
         const executionList = this.model.dag.executionList; // Fixed typo here
-        const operands = {}; 
-        const builderOutput = {}; 
+        const operands = {};
+        const builderOutput = {};
         const gradients = {}; // Initialize gradients object
         const constantCache = new Map();
-        const algorithm = (hyperParams.optimizer ?? 'rlion').toLowerCase();
             
         // optimizer defaults are set by model.train()
         
@@ -1413,7 +1422,7 @@ class NNEngine {
         }
         
         graph = await builder.build(builderOutput);
-        return this.cacheGraph(graph, 'training', batchSize);
+        return this.cacheGraph(graph, 'training', batchSize, variant);
     }
     
     // implements the original Lion optimizer (Evolved Sign Momentum)
