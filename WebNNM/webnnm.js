@@ -119,13 +119,13 @@ export class NNModel {
                     });
                 }
             } else if (config.url) {
-                const response = await fetch(url);
+                const response = await fetch(config.url);
                 
                 if (!response.ok) {
                     throw new Error(`Failed to load document: ${response.statusText}`);
                 }
                 
-                model.parse(response.text);
+                model.parse(await response.text());
         
                 log('\nNeural network model:\n');
                 log(model.serialize());
