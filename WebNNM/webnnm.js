@@ -879,7 +879,8 @@ export class NNModel {
                                 for (const key in model.dag.params) {
                                     const param = model.dag.params[key];
                                     const tensor = outputBanks[bankIndex][key]
-                                    param.buffer = await webnn.readTensor(tensor);
+                                    const DataType = NNModel.ML_TYPE_MAP(param.dataType);
+                                    param.buffer = new DataType(await webnn.readTensor(tensor));
                                 }
                                 bestLoss = epochLoss;
                                 bestEpoch = epoch;
@@ -893,7 +894,8 @@ export class NNModel {
                                 for (const key in model.dag.params) {
                                     const param = model.dag.params[key];
                                     const tensor = outputBanks[bankIndex][key]
-                                    param.buffer = await webnn.readTensor(tensor);
+                                    const DataType = NNModel.ML_TYPE_MAP(param.dataType);
+                                    param.buffer = new DataType(await webnn.readTensor(tensor));
                                 }
                                 bestEpoch = epoch;
                             }
