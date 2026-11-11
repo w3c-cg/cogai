@@ -591,7 +591,7 @@ export class NNModel {
                 break;
             default: {
                 const message = `Unsupported training optimizer: '${algorithm}'\n` +
-                `Available algorithms are: 'lyon', 'rlion', 'sgdm', 'nesterov'`;
+                `Available algorithms are: 'lion', 'rlion', 'sgdm', 'nesterov'`;
                 throw new Error(message);
             }
         }
@@ -1312,7 +1312,7 @@ class NNEngine {
         const optimizers = {
             'rlion': this.applyRefinedLyon,
             'lion':  this.applyLyon,
-            'nag':   this.applyNesterov,
+            'nesterov': this.applyNesterov,
             'sgdm':  this.applySGDMomentum
         };
 
