@@ -1156,6 +1156,11 @@ class NNEngine {
         if (gradients) {
             gradients[node.name] = lossGradient;
         }
+
+        // 3. buildLoss returns the gradient w.r.t. the activation's input
+        // (e.g. P - Y for softmax + cross-entropy), so the activation's
+        // backprop must pass it through rather than apply its derivative
+        activation.lossFused = true;
     }
     
     // helper for scoutingGraph to assess parameter space
@@ -3922,8 +3927,17 @@ class SoftmaxNode extends NNNode {
         
         const dY = gradients[this.name];
         if (!dY) return;
-        
+
         const x = this.inputs[0];
+
+        // When this softmax feeds a cross-entropy loss, dY is already the
+        // gradient w.r.t. the logits (P - Y) as computed by buildLoss, so
+        // applying the softmax Jacobian again would double count it
+        if (this.lossFused) {
+            this.accumulateGradient(context, x, dY);
+            return;
+        }
+
         const Y = operands[this.name]; // We need the forward OUTPUT for softmax backprop
 
         // Get the axis over which softmax was applied, defaults to the last axis)
