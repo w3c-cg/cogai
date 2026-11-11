@@ -3033,8 +3033,8 @@ class CastNode extends NNNode {
 }
 
 class ClampNode extends NNNode {
-    constructor(name, inputs, options = {}) {
-        super(name, inputs);
+    constructor(name, type, inputs, options = {}) {
+        super(name, type, inputs, options);
         this.minValue = options.minValue;
         this.maxValue = options.maxValue;
     }
@@ -3087,8 +3087,8 @@ class ClampNode extends NNNode {
 }
 
 class ConcatNode extends NNNode {
-    constructor(name, inputs, options = {}) {
-        super(name, inputs); // array of input nodes
+    constructor(name, type, inputs, options = {}) {
+        super(name, type, inputs, options); // array of input nodes
         this.axis = options.axis ?? 0;
         this.preserveShape = false;
     }
@@ -3127,8 +3127,8 @@ class ConcatNode extends NNNode {
 }
 
 class ArgMaxNode extends NNNode {
-    constructor(name, inputs, options = {}) {
-        super(name, inputs);
+    constructor(name, type, inputs, options = {}) {
+        super(name, type, inputs, options);
         this.axes = options.axes;
         this.preserveShape = false;
         this.keepDimensions = options.keepDimensions ?? false;
@@ -3156,8 +3156,8 @@ class ArgMaxNode extends NNNode {
 }
 
 class ArgMinNode extends NNNode {
-    constructor(name, inputs, options = {}) {
-        super(name, inputs);
+    constructor(name, type, inputs, options = {}) {
+        super(name, type, inputs, options);
         this.axes = options.axes;
         this.preserveShape = false;
         this.keepDimensions = options.keepDimensions ?? false;
@@ -3185,8 +3185,8 @@ class ArgMinNode extends NNNode {
 }
 
 class CumulativeSumNode extends NNNode {
-    constructor(name, inputs, options = {}) {
-        super(name, inputs);
+    constructor(name, type, inputs, options = {}) {
+        super(name, type, inputs, options);
         this.axis = options.axis;
         this.exclusive = options.exclusive ?? false;
         this.reversed = options.reversed ?? false;
@@ -3224,8 +3224,8 @@ class CumulativeSumNode extends NNNode {
 }
 
 class BatchNormalizationNode extends NNNode {
-    constructor(name, inputs, options = {}) {
-        super(name, inputs); // inputs[0]=input, [1]=mean, [2]=var, [3]=scale(opt), [4]=bias(opt)
+    constructor(name, type, inputs, options = {}) {
+        super(name, type, inputs, options); // inputs[0]=input, [1]=mean, [2]=var, [3]=scale(opt), [4]=bias(opt)
         this.axis = options.axis ?? 1;
         this.broadcast = true;
         this.epsilon = options.epsilon ?? 1e-5;
