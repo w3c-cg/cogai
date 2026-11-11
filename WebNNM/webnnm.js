@@ -641,7 +641,15 @@ export class NNModel {
                 bankIndexReady[bankIndex] = true;
             }
         }
-                
+
+        // Wait until every dispatched batch has been executed and its
+        // callback has finished, then mark both banks as free again
+        async function drainBanks() {
+            await isReadyForInput(0);
+            await isReadyForInput(1);
+            bankIndexReady[0] = bankIndexReady[1] = true;
+        }
+
         // Pass the dataset and the number of seeds to test.
         if (hyperParams.seeds > 0) {
             log(`\nScouting for best initialization from ${hyperParams.seeds} seeds`);
@@ -663,15 +671,32 @@ export class NNModel {
         log(`\nTraining against ${dataset.name()} dataset: ${trainingSampleCount} training samples for ${epochs} epochs`);
         log(`showing average loss per sample:`);
 
-        let bankIndex = 0; // used to switch bankIndexs on odd/even batches
         inputBanks[0] = {}; inputBanks[1] = {};
         outputBanks[0] = {}; outputBanks[1] = {};
-        
+
         function prefix (name) {
             const parts = name.split(':');
             return parts[0];
         }
-        
+
+        // read the current params back from the output bank of the
+        // epoch's last batch, only valid once the banks are drained
+        async function readParams () {
+            const bank = outputBanks[(batchCount - 1) & 1];
+            const snapshot = {};
+            for (const key in model.dag.params) {
+                // wrap in a typed array, as readTensor returns an ArrayBuffer
+                const DataType = NNModel.ML_TYPE_MAP(model.dag.params[key].dataType);
+                snapshot[key] = new DataType(await webnn.readTensor(bank[key]));
+            }
+            return snapshot;
+        }
+
+        function setParams (snapshot) {
+            for (const key in snapshot)
+                model.dag.params[key].buffer = snapshot[key];
+        }
+
         async function assignTensors (name, descriptor) {
             inputBanks[0][name] = await webnn.createTensor(descriptor);
             outputBanks[0][name] = await webnn.createTensor(descriptor);
@@ -747,14 +772,18 @@ export class NNModel {
             let averageLosses = {};
             let epochSamples = 0;
             let epochLoss = 0;
+            let lastValidCount = 0; // number of samples in the epoch's last batch
 
             // iterate through batches for this epoch
             for (let batchIndex = 0; batchIndex < batchCount; ++batchIndex) {
-                bankIndex = batchIndex & 1;
+                // declared per batch so that this batch's callback
+                // releases the bank it used, not the current one
+                const bankIndex = batchIndex & 1;
 
                 const batch = dataset.getNextBatch(subset, model);// last batch has zeros for missing samples
                 const validCount = batch.validCount; // actual number of samples
-                
+                lastValidCount = validCount;
+
                 const inputs = inputBanks[bankIndex];
                 const outputs = outputBanks[bankIndex];
                 
@@ -853,65 +882,54 @@ export class NNModel {
                     }
             
                     epochSamples += validCount;
-                
-                    // only on last batch in each epoch
-                    if (batchIndex === batchCount - 1) {
-                        let totalBatchLoss = 0;
-                    
-                        // periodically report progress
-                        if (epochs < 100 || epoch % 50 === 0 || epoch === 1) {
-                            // perform validation pass if applicable
-                            if (validationSize > 0)
-                                model.test(dataset.subsetRole.VALIDATION);
-            
-                            for (const name in averageLosses) {
-                                const lossValue = averageLosses[name]
-                                const blockName = name.split(':')[0];
-                                totalBatchLoss += lossValue * hyperParams.lossWeights[blockName];
-                                if (patience > 0)
-                                    log(`  Epoch ${epoch}, ${blockName}:loss = ${lossValue/epochSamples}`);
-                            }
-                            
-                            epochLoss += (totalBatchLoss * validCount);
-                            
-                            if (epochs >= 100 && epochLoss < bestLoss) {
-                                // read back params
-                                for (const key in model.dag.params) {
-                                    const param = model.dag.params[key];
-                                    const tensor = outputBanks[bankIndex][key]
-                                    const DataType = NNModel.ML_TYPE_MAP(param.dataType);
-                                    param.buffer = new DataType(await webnn.readTensor(tensor));
-                                }
-                                bestLoss = epochLoss;
-                                bestEpoch = epoch;
-                                patience = hyperParams.patience;
-                            }
-                        }
-                    
-                        if (epoch === epochs) {
-                            if (epochLoss < bestLoss) {
-                                 // read back params after finishing training
-                                for (const key in model.dag.params) {
-                                    const param = model.dag.params[key];
-                                    const tensor = outputBanks[bankIndex][key]
-                                    const DataType = NNModel.ML_TYPE_MAP(param.dataType);
-                                    param.buffer = new DataType(await webnn.readTensor(tensor));
-                                }
-                                bestEpoch = epoch;
-                            }
-        
-                            log(`best params from epoch ${bestEpoch}`);
-                        }
-                    }
-                    
                     setReadyForInput(bankIndex);
                 }).catch((error) => {
                     setReadyForInput(bankIndex);
                     throw error;
                 });
-            } 
-                    
-            dataset.prepareBatches(subset); // prepare for next epoch           
+            }
+
+            // wait until every batch in this epoch has been executed and
+            // its loss read back before summarising the epoch
+            await drainBanks();
+
+            let totalBatchLoss = 0;
+
+            // periodically report progress
+            if (epochs < 100 || epoch % 50 === 0 || epoch === 1) {
+                // perform validation pass if applicable
+                if (validationSize > 0)
+                    model.test(dataset.subsetRole.VALIDATION);
+
+                for (const name in averageLosses) {
+                    const lossValue = averageLosses[name]
+                    const blockName = name.split(':')[0];
+                    totalBatchLoss += lossValue * hyperParams.lossWeights[blockName];
+                    if (patience > 0)
+                        log(`  Epoch ${epoch}, ${blockName}:loss = ${lossValue/epochSamples}`);
+                }
+
+                epochLoss += (totalBatchLoss * lastValidCount);
+
+                if (epochs >= 100 && epochLoss < bestLoss) {
+                    setParams(await readParams());
+                    bestLoss = epochLoss;
+                    bestEpoch = epoch;
+                    patience = hyperParams.patience;
+                }
+            }
+
+            if (epoch === epochs) {
+                if (epochLoss < bestLoss) {
+                    // read back params after finishing training
+                    setParams(await readParams());
+                    bestEpoch = epoch;
+                }
+
+                log(`best params from epoch ${bestEpoch}`);
+            }
+
+            dataset.prepareBatches(subset); // prepare for next epoch
         }
         
         // epoch loop finished
