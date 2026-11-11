@@ -3820,7 +3820,6 @@ class ReluNode extends NNNode {
         const dX = builder.mul(dY, floatMask);
 
         this.accumulateGradient(context, X, dX);
-        gradients[X.name] = dX;
     }
 }
 
@@ -3948,7 +3947,6 @@ class SoftmaxNode extends NNNode {
         const dX = builder.mul(Y, diff);
 
         this.accumulateGradient(context, x, dX);
-        gradients[x.name] = dX;
     }    
 }
 
