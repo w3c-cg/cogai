@@ -1,5 +1,10 @@
 import {AbstractDataset} from "./datasets.js";
 
+// Log via the application's global log() function if it defines one,
+// otherwise via console.log
+const log = (...args) => (globalThis.log ?? console.log)(...args);
+
+
 export class Dataset extends AbstractDataset {
     // Private properties for data storage
     #features; // list of all samples
