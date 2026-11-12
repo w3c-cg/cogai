@@ -383,6 +383,8 @@ export class NNModel {
         
         const graph = await model.#engine.inferenceGraph(batchSize);
                         
+        await context.updateOutputs(); // match the context's batch size
+
         let inputs = context.inputs();  // no params since built as WebNN constants
         let outputs = context.outputs();
         
@@ -1566,14 +1568,23 @@ class NNContext {
     }
     
     async #init() {
-        const model = this.#model;
-        const webnn = model.webnn();
-        
         // construct webnn dispatch outputs
-        
-        for (const output of Object.values(model.outputs())) {
-            const tensor = await webnn.createTensor(output.descriptor(this.#batchSize))
-            this.#outputs[output.name] = tensor;
+        await this.updateOutputs();
+    }
+
+    // (re)create the output tensors to match the current batch size
+    async updateOutputs () {
+        const webnn = this.#model.webnn();
+
+        for (const output of Object.values(this.#model.outputs())) {
+            const descriptor = output.descriptor(this.#batchSize);
+            const tensor = this.#outputs[output.name];
+
+            if (tensor && this.#matchingDescriptor(tensor, descriptor))
+                continue;
+
+            tensor?.destroy();
+            this.#outputs[output.name] = await webnn.createTensor(descriptor);
         }
     }
     
@@ -1599,6 +1610,10 @@ class NNContext {
     
     setBatchSize (batchSize) {
         this.#batchSize = batchSize;
+    }
+
+    get batchSize () {
+        return this.#batchSize;
     }
     
     inputs () {
@@ -1753,8 +1768,9 @@ class NNContext {
         } else if (! this.#matchingDescriptor(tensor, descriptor)) {
             tensor.destroy();
             tensor = await webnn.createTensor(descriptor);
+            this.#inputs[name] = tensor;
         }
-        
+
         webnn.writeTensor(tensor, data);
         return data;
     }
