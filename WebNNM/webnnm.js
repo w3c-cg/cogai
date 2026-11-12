@@ -2424,21 +2424,6 @@ class NNNode {
         return shape;
     }
 
-    compatible (shape1, shape2) {
-        if (shape1 === undefined || shape2 === undefined)
-            return true;
-            
-        if (shape1.length !== shape2.length)
-            return false;
-            
-        for (let i = 0; i < shape1.length; ++i) {
-            if (shape1[i] !== shape2[i])
-                return false;
-        }
-        
-        return true;
-    }
-    
     // return MLIR syntax for node's shape and data type
     MLIRType() {
         const featureShape = this.attributes.shape; // e.g., [224, 224, 3]
@@ -2593,12 +2578,6 @@ class NNNode {
        return inputs.map(node => operands[node.name]); 
     }
     
-    options () {
-        return this.options
-            ? this.options.map(name => this.attributes[name])
-            : undefined;
-    }
-
     // Helper to calculate ratio of elements matching a boolean condition.
     calculateRatio(builder, booleanMask, totalSize) {
         const dataType = 'float32';
@@ -2614,7 +2593,7 @@ class NNNode {
     // args is list of MLOperands for operation's operands
     build(builder, operands, batchSize) { 
         const opname = this.operator ? this.operator : this.type;    
-        return builder[opname](...this.args(operands), this.options());
+        return builder[opname](...this.args(operands));
     }
     
     buildSaturationMetric(builder, activations) {
@@ -2624,65 +2603,6 @@ class NNNode {
 
     buildLoss (builder, prediction, expected, mask, validCount) {
         this.warn(`### missing 'buildLoss' implementation for ${this.type}`);
-    }
-    
-    // nodes that leave the shape unchanged
-    keepShape (shape) {
-        let s1 = this.attributes['shape'];
-        
-        if (!this.compatible(s1, shape))
-            this.warn(`### operation ${this.name} has an inconsistent shape`);
-            
-        if (s1 === undefined && shape !== undefined)
-            return shape;
-            
-        return this.attributes['shape'];
-    }
-    
-    // operators with two operands, e.g. 'add'
-    simpleOpsShape (shape) {
-        // apply checks to data types for operands and result
-        let t1 = this.inputs[0].attributes.dataType;
-        let t2 = this.inputs[1].attributes.dataType;
-        let t3 = this.attributes.dataType
-        
-        if (t1) {
-            if (t3) {
-                if (t3 !== t1)
-                    this.warn(`### operation ${this.name} has an inconsistent data type`);
-            } else {
-                this.attributes.dataType = t1;
-            }
-            
-            if (t2) {
-                if (t1 !== t2)
-                    this.warn(`### operation ${this.name} has an inconsistent data type`);
-            } else {
-                this.inputs[1].attributes.dataType = t1;
-            }
-        }
-    
-        // Simple broadcasting logic (NEEDS CHECKING)
-        const s1 = this.inputs[0].attributes.shape;
-        const s2 = this.inputs[1].attributes.shape;
-        const s3 = this.attributes.shape;
-
-        if (incompatible(s1, shape))
-            this.warn(`### operation ${this.name} has an inconsistent shape`);
-
-        let outputShape;
-        
-        if (s2) {
-            outputShape = s1.length >= s2.length 
-                ? [...s1] : [...s2];
-        } else {
-            outputShape = [...s1];
-        }
-        
-        if (incompatible(s2, outputShape))
-            this.warn(`### operation ${this.name} has an inconsistent shape`);
-            
-        return outputShape
     }
     
     tensorRank () {
@@ -2705,25 +2625,6 @@ class NNNode {
         }
     }
     
-    // Called during graph construction to eagerly prepare tensors
-    prepare() {
-        this.dataType = this.inferDataType();
-        this.shape = this.resolveForwards();
-    }
-
-    // Resolves the datatype, explicit definitions override inferred types
-    inferDataType() {
-        if (this.dataType) return this.dataType;
-        
-        // Default inference: inherit from the first input operand
-        if (this.inputs && this.inputs.length > 0 && this.inputs[0].dataType) {
-            return this.inputs[0].dataType;
-        }
-        
-        // Fallback per WebNN spec defaults
-        return 'float32'; 
-    }
-
     // retrieves this layer's output and gradient to compute
     // and save gradients for this layer's parameters and input
     // saving the latter under the names of the input nodes
@@ -2755,28 +2656,6 @@ class NNNode {
     }
 }
 
-class UnaryNode extends NNNode {
-    inferDataType() {
-        return this.dataType || this.inputs[0].dataType;
-    }
-
-    resolveForwards() {
-        // Shape matches input shape exactly
-        return [...this.inputs[0].shape];
-    }
-}
-
-class BinaryNode extends NNNode {
-    inferDataType() {
-        // Binary ops require matching data types in WebNN
-        return this.dataType || this.inputs[0].dataType; 
-    }
-
-    resolveForwards() {
-        return broadcastShapes(this.inputs[0].shape, this.inputs[1].shape);
-    }
-}
-
 // model input
 class InputNode extends NNNode {
     descriptor (batchSize) {
@@ -2794,10 +2673,6 @@ class InputNode extends NNNode {
         buffer.fill(n);
         
         return buffer;
-    }
-    
-    resolveForwards (shape) {
-        return this.keepShape(shape);
     }
     
     backprop (context) { 
@@ -2818,10 +2693,6 @@ class OutputNode extends NNNode {
             readable: true,
             writable: false,
         };
-    }
-    
-    resolveForwards (shape) {
-        return this.keepShape(shape);
     }
     
     backprop (context) { 
@@ -2911,10 +2782,6 @@ class ParamNode extends NNNode {
         return [...this.attributes.shape];
     }
 
-    resolveForwards (shape) {
-        return this.keepShape(shape);
-    }
-    
     backprop (context) { 
         // nothing to do here
     }
@@ -2938,7 +2805,7 @@ class NumberNode extends NNNode {
         // unless influenced by a parent node (advanced inference).
         return {
             dataType: this.fixedType || 'float32',
-            shape: this.options.shape || []
+            shape: [] // literals are scalars
         };
     }
     
@@ -2985,10 +2852,6 @@ class StringNode extends NNNode {
         return [...this.attributes.shape];
     }
 
-    resolveForwards (shape) {
-        return this.keepShape(shape);
-    }
-    
     backprop (context) { 
         // nothing to do here
     }
@@ -3009,10 +2872,6 @@ class CastNode extends NNNode {
         return { ...desc, dataType: this.dataType };
     }
 
-    resolveForwards (shape) {
-        return this.keepShape(shape);
-    }
-    
     backprop(context) {
         const { builder, gradients } = context;
         const grad = gradients[this.name];
@@ -3047,10 +2906,6 @@ class ClampNode extends NNNode {
         return this.inputs[0].descriptor(batchSize);
     }
 
-    resolveForwards (shape) {
-        return this.keepShape(shape);
-    }
-    
     build(builder, operands, batchSize) {
         const x = operands[this.inputs[0].name];
         const options = {};
@@ -3790,10 +3645,6 @@ class ReluNode extends NNNode {
         }
     }
 
-    resolveForwards (shape) {
-        return this.keepShape(shape);
-    }
-    
     backprop (context) {
         const builder = context.builder;
         const operands = context.operands;
@@ -3832,7 +3683,7 @@ class SoftmaxNode extends NNNode {
     build (builder, operands, batchSize) {
         const shape = this.shape(batchSize);
         const axis = shape.length - 1;
-        return builder[this.type](...this.args(operands), axis, this.options);
+        return builder[this.type](...this.args(operands), axis);
     }
 
     // SoftMax is saturated if the probability distribution becomes too "peaky"
@@ -3910,10 +3761,6 @@ class SoftmaxNode extends NNNode {
     // Softmax does not change the shape of the tensor
     // so rely on parent's implementation for shape()
 
-    resolveForwards (shape) {
-        return this.keepShape(shape);
-    }
-    
     backprop (context) {
         const builder = context.builder;
         const operands = context.operands;
@@ -4038,24 +3885,6 @@ function getLUB(dataTypes) {
     // 4. Return the highest precedence among valid types
     const maxPrecedence = Math.max(...values);
     return TYPE_NAME_MAP[maxPrecedence];
-}
-
-// Reconciles types with an added "Promotion Bridge" rule:
-// If Int and Float are mixed, promote to at least Float32 
-// to prevent massive precision loss.
-
-function reconcileTypes(typeA, typeB) {
-    const isFloat = (type) => type.startsWith("float") || type.startsWith("complex");
-  
-    const aFloat = isFloat(typeA);
-    const bFloat = isFloat(typeB);
-
-    // If mixing types (e.g., int64 and float16), promote to float32
-    if (aFloat !== bFloat) {
-        return getLUB([typeA, typeB, "float32"]);
-    }
-
-    return getLUB([typeA, typeB]);
 }
 
 
