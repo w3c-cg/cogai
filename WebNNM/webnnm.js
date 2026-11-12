@@ -3463,7 +3463,7 @@ class ElementWiseLogicalNode extends ElementWiseMathNode {
         const descB = this.inputs[1].descriptor(batchSize);
         return {
             dataType: 'uint8', // WebNN logical operators generally yield boolean/uint8 
-            shape: this.broadcastShapes(descA.shape, descB.shape)
+            shape: this.broadcastShapes([descA.shape, descB.shape])
         };
     }
 
