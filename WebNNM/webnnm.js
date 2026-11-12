@@ -3316,14 +3316,12 @@ class MatMulNode extends NNNode {
         if (s2) {
             if (incompatible(s2, shape)) {
                 let valid = false;
-                
+
                 if (this.broadcast)
-                    valid = isBroadcastable(s1, shape);
-                    
+                    valid = isBroadcastable(s2, shape);
+
                 if (!valid)
                     this.warn(`### operation ${this.name} cannot broadcast to [${shape}]`);
-            } else {
-                this.warn(`### operation ${this.name} has an inconsistent shape, expecting ${shape}`);
             }
         } else {
             this.inputs[1].attributes.shape = [s1[0], s3[0]];        
@@ -3410,14 +3408,12 @@ class ElementWiseMathNode extends NNNode {
         if (s2) {
             if (incompatible(s2, shape)) {
                 let valid = false;
-                
+
                 if (this.broadcast)
-                    valid = isBroadcastable(s1, shape);
-                    
+                    valid = isBroadcastable(s2, shape);
+
                 if (!valid)
                     this.warn(`### operation ${this.name} cannot broadcast to [${shape}]`);
-            } else {
-                this.warn(`### operation ${this.name} has an inconsistent shape, expecting ${shape}`);
             }
         } else {
             this.inputs[1].attributes.shape = [...shape];
