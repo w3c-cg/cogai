@@ -1,7 +1,11 @@
 // WebNNM web browser library for inference and training neural network models
 // with WebNN as a platform independent backend using NPUs, GPUs and CPUs
 
-const NN_READABLE = 1;  // used for model outputs
+// Log via the application's global log() function if it defines one,
+// otherwise via console.log
+const log = (...args) => (globalThis.log ?? console.log)(...args);
+
+const NN_READABLE = 1;// used for model outputs
 const NN_WRITABLE = 2; // used for model inputs
 const NN_READ_WRITE = (NN_READABLE | NN_WRITABLE);
 
