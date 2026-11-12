@@ -2079,10 +2079,15 @@ class NNTopology {
 
             // --- Specialized Ops ---
             if (layer.opName === 'residual') {
-                const skip = layer.options.get('skip');
-                const skipNode = !isNaN(skip) 
-                    ? this.nodeHistory[this.nodeHistory.length - 1 - parseInt(skip)]
+                // 'to' names the layer to add, as documented, 'skip' is
+                // accepted as an alias and may also count layers back
+                const skip = layer.options.get('to') ?? layer.options.get('skip');
+                const skipNode = typeof skip === 'number'
+                    ? this.nodeHistory[this.nodeHistory.length - 1 - skip]
                     : this.namedNodes.get(skip);
+
+                if (!skipNode)
+                    throw new Error(`residual(to=${skip}): no such layer in block "${blockName}"`);
 
                 const resName = this.symbols.gensym('res');
                 const resNode = createNode('add', resName, [lastNode, skipNode], layer.options);
