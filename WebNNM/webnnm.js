@@ -178,8 +178,7 @@ export class NNModel {
     // list of input blocks
     inputBlocks () {
         let blocks = [];
-        for (const name in this.blocks) {
-            const block = this.blocks[name];
+        for (const block of this.blocks.values()) {
             if (block && block.input()) {
                 blocks.push(block);
             }
@@ -190,8 +189,7 @@ export class NNModel {
     // list of output blocks
     outputBlocks () {
         let blocks = [];
-        for (const name in this.blocks) {
-            const block = this.blocks[name];
+        for (const block of this.blocks.values()) {
             if (block && block.output()) {
                 blocks.push(block);
             }
