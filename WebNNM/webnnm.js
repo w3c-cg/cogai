@@ -14,15 +14,15 @@ export class NNTest {
     static async create (config) {
         // Check for WebNN API support
         if (!navigator.ml) {
-            log("Error: WebNN API is not supported in this browser.");
-            return;
+            throw new Error("WebNN API is not supported in this browser.");
         }
-        
+
         try {
             const webnn = await navigator.ml.createContext(config);
             return new NNTest(webnn);
         } catch (e) {
             log("failed to acquire WebNN context");
+            throw e;
         }
     }
     
@@ -79,7 +79,7 @@ export class NNModel {
                 "flag, then shutting down and restarting the browser:");
             log("Try typing 'chrome://flags' into the location field and then " +
                 "search for 'neural'. Change the option from Default to Enabled.")
-            return;
+            throw new Error("WebNN API is not supported in this browser.");
         }
         
         try {
@@ -141,6 +141,7 @@ export class NNModel {
             return model;
         } catch (e) {
             log(e);
+            throw e; // reject, rather than resolve with undefined
         }
     }
     
