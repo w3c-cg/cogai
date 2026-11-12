@@ -1935,6 +1935,10 @@ class NNTopology {
         return outputs;
     }
     
+    warn (message) {
+        log(message);
+    }
+
     #createPRNG(seed) {
         return function() {
             let t = seed += 0x6D2B79F5;
