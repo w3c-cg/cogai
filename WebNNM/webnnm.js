@@ -4,6 +4,7 @@
 const NN_READABLE = 1;  // used for model outputs
 const NN_WRITABLE = 2; // used for model inputs
 const NN_READ_WRITE = (NN_READABLE | NN_WRITABLE);
+const TRACE_METADATA = false; // log how each node's data type is resolved
 
 // testing harness interface
 export class NNTest {
@@ -1975,35 +1976,25 @@ class NNTopology {
     // propagate tensor shapes and datatypes across DAG
     // one iteration should be sufficient in most cases
     resolveTensorMetadata(iterations = 1) {
-        let queue = [];
-        
-        for (let i = 0; i < iterations; i++) {
-            // Forward pass: Inputs -> Outputs
-            queue.push(Object.values(this.inputs));
+        // The execution list is in topological order, so walking it forwards
+        // resolves each node once, after all of its inputs, and walking it
+        // backwards resolves each node once, after all of its consumers
 
-            while (queue.length > 0) {
-                const nodes = queue.pop();
-                
-                if (nodes) {
-                    nodes.forEach(node => {
-                        node.resolveForward();
-                        const dependents = this.nodeOutputs[node.name];
-                        if (dependents) queue.push(dependents)
-                    });
+        for (let i = 0; i < iterations; i++) {
+            // Forward pass: Inputs -> Outputs, visiting the model inputs
+            // and the nodes that depend on them
+            const reached = new Set();
+
+            for (const node of this.executionList) {
+                if (node.type === 'input' || node.inputs.some(input => reached.has(input))) {
+                    node.resolveForward();
+                    reached.add(node);
                 }
             }
 
             // Backward pass: Outputs -> Inputs
-            queue.push(Object.values(this.outputs));
-            
-            while (queue.length > 0) {
-                const nodes = queue.pop();
-                nodes.forEach(node => {
-                    node.resolveBackward();
-                    const inputs = node.inputs;
-                    if (inputs && inputs.length > 0) queue.push(inputs);
-                });
-            }
+            for (let j = this.executionList.length - 1; j >= 0; --j)
+                this.executionList[j].resolveBackward();
         }
         
         // insert cast operations where needed
@@ -2537,7 +2528,8 @@ class NNNode {
             this.dataType = this.dataType || "float32";
         }
 
-        log(`[Forward] ${this.name} resolved to ${this.dataType}`);
+        if (TRACE_METADATA)
+            log(`[Forward] ${this.name} resolved to ${this.dataType}`);
     }
 
     resolveBackward() {
@@ -2553,7 +2545,8 @@ class NNNode {
                 this.warn(`Node ${this.name} is locked to ${this.dataType}, but consumers require ${requiredType}. A Cast will be required.`);
             }
         } else if (TYPE_PRECEDENCE_MAP[requiredType] > TYPE_PRECEDENCE_MAP[this.dataType]) {
-            log(`[Backward] Upgrading inferred ${this.name} to ${requiredType}`);
+            if (TRACE_METADATA)
+                log(`[Backward] Upgrading inferred ${this.name} to ${requiredType}`);
             this.dataType = requiredType;
         }
         
@@ -2968,7 +2961,8 @@ class NumberNode extends NNNode {
         }
     
         // Note: integer values can usually be represented with floats
-        log(`[Backward] resolved literal ${this.name} as ${this.dataType}`);
+        if (TRACE_METADATA)
+            log(`[Backward] resolved literal ${this.name} as ${this.dataType}`);
     }
     
     backprop (context) { 
