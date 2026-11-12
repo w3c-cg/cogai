@@ -2622,8 +2622,10 @@ class NNNode {
         return builder.constant('float32', 0.0);
     }
 
+    // only SoftmaxNode implements a loss so far
     buildLoss (builder, prediction, expected, mask, validCount) {
-        this.warn(`### missing 'buildLoss' implementation for ${this.type}`);
+        throw new Error(`Training and testing need a loss for the model's output, ` +
+            `which is only implemented for a softmax output activation, not '${this.type}'`);
     }
     
     // nodes that leave the shape unchanged
