@@ -3735,12 +3735,11 @@ class LogicalNotNode extends UnaryLogicalNode {
 }
 
 class IsNanNode extends UnaryLogicalNode {
-    // WebNN often maps this to logicalIsNan or isNan depending on the specific API binding
-    build(builder, operands) { return builder.logicalIsNan(operands[this.inputs[0].name]); }
+build(builder, operands) { return builder.isNaN(operands[this.inputs[0].name]); }
 }
 
 class IsInfiniteNode extends UnaryLogicalNode {
-    build(builder, operands) { return builder.logicalIsInfinite(operands[this.inputs[0].name]); }
+    build(builder, operands) { return builder.isInfinite(operands[this.inputs[0].name]); }
 }
 
 class ReluNode extends NNNode {
