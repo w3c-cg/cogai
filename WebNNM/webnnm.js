@@ -253,15 +253,14 @@ export class NNModel {
         // add validCount to inputs for actual number of samples in batch
         const validCount = batch.validCount; // actual number of samples
         const descriptor = {dataType: 'int32', shape: [], readable: false,  writable: true};
-        const tensor = await webnn.createTensor(descriptor);
+        const tensor = await model.getTensor('validCount', descriptor, inputs);
         webnn.writeTensor(tensor, new Int32Array([validCount]));
-        inputs['validCount'] = tensor;
         
         // add scouting metrics to outputs if needed
         if (scouting) {
             const descriptor = {dataType: 'float32', shape: [], readable: true,  writable: false};
-            outputs['metric:gradRatio'] = await webnn.createTensor(descriptor);            
-            outputs['metric:deadRatio'] = await webnn.createTensor(descriptor);           
+            await model.getTensor('metric:gradRatio', descriptor, outputs);
+            await model.getTensor('metric:deadRatio', descriptor, outputs);
         }
 
         // get tensor for sample model inputs, then write them
@@ -274,18 +273,16 @@ export class NNModel {
             if (!batch.inputs[blockName])
                 throw new Error(`dataset lacks data for ${blockName}`);
                 
-            const tensor = await webnn.createTensor(descriptor);
+            const tensor = await model.getTensor(key, descriptor, inputs);
             webnn.writeTensor(tensor, batch.inputs[blockName].data);
-            inputs[key] = tensor;
         }
         
         // add model params as inputs
         for (const key in model.dag.params) {
             const param = model.dag.params[key]; // ParamNode
             const descriptor = param.descriptor(batchSize);
-            const tensor = await webnn.createTensor(descriptor);
+            const tensor = await model.getTensor(key, descriptor, inputs);
             webnn.writeTensor(tensor, param.buffer);
-            inputs[key] = tensor;
         }
         
         // get tensors for expected model outputs, then write them
@@ -306,14 +303,12 @@ export class NNModel {
             expectedDescriptor.readable = false;
             expectedDescriptor.writable = true;
             
-            let tensor = await webnn.createTensor(lossDescriptor);
-            outputs[lossName] = tensor;
+            let tensor = await model.getTensor(lossName, lossDescriptor, outputs);
             
             if (!batch.inputs[blockName])
                 throw new Error(`dataset lacks data for ${blockName}`);
                 
-            tensor = await webnn.createTensor(expectedDescriptor);
-            inputs[expectedName] = tensor;
+            tensor = await model.getTensor(expectedName, expectedDescriptor, inputs);
             webnn.writeTensor(tensor, batch.outputs[blockName].data);
         }
     }
