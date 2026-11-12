@@ -2734,7 +2734,7 @@ class NNNode {
     
     serialize () {
         let attrs = [];
-        for (name in this.attributes) {
+        for (const name in this.attributes) {
             const value = this.attributes[name];
             if (value !== undefined) {
                 if (Array.isArray(value))
@@ -2751,7 +2751,7 @@ class NNNode {
         
         const inputNames = this.inputs.map(i => i.name || i.type);
         const description = (inputNames.concat(attrs)).join(', ');
-        return `   ${this.type}(${description})}`;
+        return `   ${this.type}(${description})`;
     }
 }
 
