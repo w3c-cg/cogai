@@ -90,9 +90,7 @@ export class Dataset extends AbstractDataset {
         
         // 2. Perform the split logic
         
-        const trainingSize = Math.ceil(0.7 * rows.length);  
-        const testingSize = rows.length - trainingSize;
-        const features = new Array(rows.length);
+const features = new Array(rows.length);
         const labels = new Array(rows.length);
         const names = new Array(rows.length);
         const FEATURE_SIZE = dataset.#featureSize = cols.length - 1;
@@ -131,20 +129,22 @@ export class Dataset extends AbstractDataset {
         dataset.#features = features;
         dataset.#labels = labels;
         
-        const trainingIndices = new Array(trainingSize);
-        
-        for (let i = 0; i < trainingSize; ++i) {
-            trainingIndices[i] = i;
-        }
-        
-        dataset.indices()[this.subsetRole.TRAINING] = trainingIndices;
-        
-        const testingIndices = new Array(testingSize);
+        // split each species 70/30 between training and testing, as the
+        // CSV file is sorted by species and a plain split would leave
+        // most of one species out of training
+        const trainingIndices = [];
+        const testingIndices = [];
+        const bySpecies = {};
 
-        for (let i = 0; i < testingSize; ++i) {
-            testingIndices[i] = i + trainingSize;
+        names.forEach((name, i) => (bySpecies[name] ??= []).push(i));
+
+        for (const indices of Object.values(bySpecies)) {
+            const trainingSize = Math.ceil(0.7 * indices.length);
+            trainingIndices.push(...indices.slice(0, trainingSize));
+            testingIndices.push(...indices.slice(trainingSize));
         }
-        
+
+        dataset.indices()[this.subsetRole.TRAINING] = trainingIndices;
         dataset.indices()[this.subsetRole.TESTING] = testingIndices;
         
         log(`dataset has ${dataset.#features.length} samples: ` +
