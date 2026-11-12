@@ -1962,7 +1962,7 @@ class NNTopology {
     // an operand is found to have a different type
     insertCastNode (operandNode, dataType) {
         const cast = 'cast';
-        const typeNode = createNode('string', dataType, [], {});
+        const typeNode = createNode('string', this.symbols.gensym('type'), [], {value: dataType});
         const nodeName = this.symbols.gensym(cast);
         const shape = operandNode.attributes.shape;
         const castNode = createNode(cast, nodeName, [operandNode, typeNode], {shape:shape})
@@ -2115,11 +2115,11 @@ class NNTopology {
             // We use the symbol table to ensure 'w' becomes 'w1', 'w2', etc.
             layer.args.forEach(argName => {
                 if (typeof argName === 'number') {
-                    const numberNode = createNode('number', argName, [], {});
+                    const numberNode = createNode('number', this.symbols.gensym('const'), [], {value: argName});
                     this.registerNode(numberNode);
                     inputs.push(numberNode);
                 } else if (dataTypes.has(argName)) {
-                    const stringNode = createNode('string', argName, [], {});
+                    const stringNode = createNode('string', this.symbols.gensym('type'), [], {value: argName});
                     this.registerNode(stringNode);
                     inputs.push(stringNode);
                 } else {
@@ -2928,7 +2928,7 @@ class ParamNode extends NNNode {
 class NumberNode extends NNNode {
     constructor(name, type, inputs = [], attributes = {}) {
         super(name, type, inputs, attributes);
-        this.value = name;
+        this.value = attributes.value ?? name; // name is unique, value may not be
         this.dataType = attributes.dataType ?? null;
         this.attributes.shape = []; // Scalars are rank-0
     }
@@ -2975,7 +2975,7 @@ class NumberNode extends NNNode {
         // nothing to do here
     }
     build (builder, operands, batchSize) {
-        return builder.constant(this.dataType, this.name);
+        return builder.constant(this.dataType, this.value);
     }
 }
 
@@ -2994,7 +2994,7 @@ class StringNode extends NNNode {
     }
     
     build (builder, operands, batchSize) {
-        return this.name;  // e.g. 'float16'
+        return this.attributes.value ?? this.name;  // e.g. 'float16'
     }
 }
 
